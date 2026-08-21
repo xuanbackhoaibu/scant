@@ -101,11 +101,17 @@ export const api = {
     traceCitation: (citationId: string) => request<any>(`/research/citations/trace/${citationId}`),
   },
 
-  // Reports
+  // Reports & One-Click Auto Create
   reports: {
     create: (data: any) => request<any>("/reports", { method: "POST", body: JSON.stringify(data) }),
+    autoCreate: (formData: FormData) => request<any>("/reports/auto-create", { method: "POST", body: formData }),
     get: (id: string) => request<any>(`/reports/${id}`),
     updateSection: (sectionId: string, data: any) => request<any>(`/reports/sections/${sectionId}`, { method: "PUT", body: JSON.stringify(data) }),
+    getJob: (jobId: string) => request<any>(`/reports/jobs/${jobId}`),
+    pauseJob: (jobId: string) => request<any>(`/reports/jobs/${jobId}/pause`, { method: "POST" }),
+    resumeJob: (jobId: string) => request<any>(`/reports/jobs/${jobId}/resume`, { method: "POST" }),
+    cancelJob: (jobId: string) => request<any>(`/reports/jobs/${jobId}/cancel`, { method: "POST" }),
+    retryJob: (jobId: string) => request<any>(`/reports/jobs/${jobId}/retry`, { method: "POST" }),
   },
 
   // Exports

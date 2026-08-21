@@ -1,6 +1,6 @@
 import asyncio
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.entities import User, Project, Report, ReportSection, TemplateVersion
@@ -232,6 +232,230 @@ async def start_agentic_report_generation(
     }
 
 
+@router.post("/auto-create")
+async def one_click_auto_create(
+    prompt: str = Form(...),
+    template_id: Optional[str] = Form(None),
+    files: Optional[List[UploadFile]] = File(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Phase U11: One-Click Autonomous Report Generation."""
+    from app.services.editor.outline_service import outline_service
+    from app.schemas.ai import AnalyzeIntentRequest
+    from app.models.entities import Job, UploadedFile, Document
+    from app.repositories.base import BaseRepository
+    from app.repositories.project_repo import file_repo, document_repo
+    from app.services.agent.agentic_report_orchestrator import agentic_orchestrator
+    from app.services.documents.pdf_parser import pdf_parser
+    from app.services.documents.docx_parser import docx_parser
+    from app.services.documents.excel_parser import excel_parser
+    from app.core.config import settings
+    import hashlib
+    from pathlib import Path
+
+    # 1. AI Intent Analysis
+    intent = await outline_service.analyze_intent(AnalyzeIntentRequest(user_prompt=prompt))
+
+    # 2. Create Project
+    project = await project_repo.create(db, obj_in={
+        "user_id": current_user.id,
+        "name": intent.suggested_title or prompt[:60],
+        "type": intent.suggested_type,
+        "description": intent.objective,
+        "metadata_json": {
+            "document_type": intent.suggested_type,
+            "document_profile": intent.suggested_type,
+            "audience": intent.target_audience,
+            "custom_fields": intent.suggested_custom_fields or [],
+        }
+    })
+
+    # 3. Upload and parse any attached files
+    if files:
+        for f in files:
+            contents = await f.read()
+            if not contents:
+                continue
+            filename = f.filename or "attachment"
+            ext = Path(filename).suffix.lower()
+            file_hash = hashlib.sha256(contents).hexdigest()
+            stored_filename = f"{project.id}_{file_hash[:12]}_{filename}"
+            file_path = settings.UPLOAD_DIR / stored_filename
+            with open(file_path, "wb") as out_f:
+                out_f.write(contents)
+
+            cat = "pdf" if ext == ".pdf" else "docx" if ext in [".docx", ".doc"] else "excel" if ext in [".xlsx", ".xls", ".csv"] else "text"
+            up_file = await file_repo.create(db, obj_in={
+                "project_id": project.id,
+                "filename": stored_filename,
+                "original_name": filename,
+                "file_type": cat,
+                "mime_type": f.content_type or "application/octet-stream",
+                "file_size": len(contents),
+                "file_path": str(file_path),
+                "file_hash": file_hash,
+                "is_parsed": True,
+            })
+
+            # Extract text
+            try:
+                txt = ""
+                if cat == "pdf":
+                    txt = pdf_parser.extract_text_and_metadata(str(file_path)).get("full_text", "")
+                elif cat == "docx":
+                    txt = docx_parser.extract_document(str(file_path)).get("full_text", "")
+                elif cat == "text":
+                    txt = contents.decode("utf-8", errors="ignore")
+                elif cat == "excel":
+                    txt = f"Dataset: {filename}"
+                if txt:
+                    await document_repo.create(db, obj_in={
+                        "project_id": project.id,
+                        "file_id": up_file.id,
+                        "title": filename,
+                        "content_text": txt,
+                        "document_type": "dataset" if cat == "excel" else "reference",
+                        "token_count": len(txt) // 4,
+                    })
+            except Exception:
+                pass
+
+    # 4. Create Initial Report
+    report = await report_repo.create(db, obj_in={
+        "project_id": project.id,
+        "template_version_id": template_id,
+        "title": project.name,
+        "report_type": intent.suggested_type,
+        "status": "generating",
+        "revision": 1,
+    })
+
+    # 5. Create Job Record
+    job_repo = BaseRepository[Job](Job)
+    job = await job_repo.create(db, obj_in={
+        "project_id": project.id,
+        "job_type": "one_click_auto_report",
+        "status": "running",
+        "progress_percent": 5,
+        "status_message": "Đang khởi tạo quy trình One-Click Auto Report...",
+        "payload_json": {"report_id": report.id, "prompt": prompt},
+        "metadata_json": {"report_id": report.id, "project_id": project.id},
+    })
+
+    # 6. Launch background execution
+    asyncio.create_task(
+        agentic_orchestrator.run_workflow(
+            db=db,
+            job_id=job.id,
+            project_id=project.id,
+            report_id=report.id,
+            instructions=prompt,
+        )
+    )
+
+    return {
+        "job_id": job.id,
+        "project_id": project.id,
+        "report_id": report.id,
+        "status": "running",
+        "message": "Hệ thống One-Click Auto Report đang tự động khởi tạo báo cáo hoàn chỉnh.",
+    }
+
+
+@router.post("/jobs/{job_id}/pause")
+async def pause_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.entities import Job
+    from app.repositories.base import BaseRepository
+
+    job_repo = BaseRepository[Job](Job)
+    job = await job_repo.get(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    await job_repo.update(db, db_obj=job, obj_in={"status": "paused", "status_message": "Quy trình đang tạm dừng."})
+    return {"job_id": job.id, "status": "paused"}
+
+
+@router.post("/jobs/{job_id}/resume")
+async def resume_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.entities import Job
+    from app.repositories.base import BaseRepository
+
+    job_repo = BaseRepository[Job](Job)
+    job = await job_repo.get(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    await job_repo.update(db, db_obj=job, obj_in={"status": "running", "status_message": "Tiếp tục thực thi quy trình..."})
+    return {"job_id": job.id, "status": "running"}
+
+
+@router.post("/jobs/{job_id}/cancel")
+async def cancel_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.entities import Job
+    from app.repositories.base import BaseRepository
+
+    job_repo = BaseRepository[Job](Job)
+    job = await job_repo.get(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    await job_repo.update(db, db_obj=job, obj_in={"status": "cancelled", "status_message": "Quy trình đã bị hủy bỏ."})
+    return {"job_id": job.id, "status": "cancelled"}
+
+
+@router.post("/jobs/{job_id}/retry")
+async def retry_job(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.entities import Job
+    from app.repositories.base import BaseRepository
+    from app.services.agent.agentic_report_orchestrator import agentic_orchestrator
+
+    job_repo = BaseRepository[Job](Job)
+    job = await job_repo.get(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    report_id = (job.metadata_json or {}).get("report_id") or (job.payload_json or {}).get("report_id")
+    if not report_id:
+        raise HTTPException(status_code=400, detail="Cannot retry: missing report_id in job metadata")
+
+    await job_repo.update(db, db_obj=job, obj_in={
+        "status": "running",
+        "progress_percent": 5,
+        "status_message": "Đang thực hiện lại quy trình...",
+        "error_message": None,
+    })
+
+    asyncio.create_task(
+        agentic_orchestrator.run_workflow(
+            db=db,
+            job_id=job.id,
+            project_id=job.project_id,
+            report_id=report_id,
+            instructions=(job.payload_json or {}).get("prompt"),
+        )
+    )
+
+    return {"job_id": job.id, "status": "running", "message": "Đã khởi động lại quy trình thành công."}
+
+
 @router.get("/jobs/{job_id}")
 async def get_job_status(
     job_id: str,
@@ -252,6 +476,7 @@ async def get_job_status(
         "progress_percent": job.progress_percent,
         "status_message": job.status_message,
         "metadata": job.metadata_json or {},
+        "payload": job.payload_json or {},
         "created_at": job.created_at,
         "updated_at": job.updated_at,
     }
