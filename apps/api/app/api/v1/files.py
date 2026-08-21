@@ -2,7 +2,7 @@ import hashlib
 import os
 import shutil
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
@@ -14,17 +14,18 @@ from app.api.deps import get_current_user
 from app.services.documents.pdf_parser import pdf_parser
 from app.services.documents.docx_parser import docx_parser
 from app.services.documents.excel_parser import excel_parser
+from app.services.knowledge.retrieval_service import retrieval_service
 
 router = APIRouter(prefix="/files", tags=["files"])
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv", ".txt", ".md", ".zip", ".png", ".jpg"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".csv", ".pptx", ".txt", ".md", ".zip", ".png", ".jpg"}
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 @router.post("/upload", response_model=FileSummary)
 async def upload_file(
     project_id: str = Form(...),
-    document_type: str = Form("reference"),  # requirement, rubric, reference, source_code
+    document_type: str = Form("reference"),  # requirement, rubric, reference, source_code, dataset
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -41,7 +42,6 @@ async def upload_file(
             detail=f"Unsupported file extension: {ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
         )
 
-    # Read contents and calculate SHA256
     contents = await file.read()
     if len(contents) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File exceeds 50MB limit")
@@ -83,6 +83,10 @@ async def upload_file(
             parsed = docx_parser.extract_document(str(file_path))
             content_text = parsed["full_text"]
             metadata = {"headings_count": len(parsed["headings"]), "tables_count": parsed["tables_count"]}
+        elif file_type_cat == "excel":
+            analysis = excel_parser.analyze_excel(str(file_path))
+            content_text = f"Dataset: {filename}\nTotal rows: {analysis.get('total_rows')}\nColumns: {', '.join([c.get('name', '') for c in analysis.get('columns', [])])}"
+            metadata = analysis
         elif file_type_cat == "text":
             content_text = contents.decode("utf-8", errors="ignore")
 
@@ -97,8 +101,7 @@ async def upload_file(
                 "token_count": len(content_text) // 4,
             })
             await file_repo.update(db, db_obj=uploaded_file, obj_in={"is_parsed": True, "metadata_json": metadata})
-    except Exception as e:
-        # File uploaded, parsing error handled gracefully
+    except Exception:
         pass
 
     return FileSummary.model_validate(uploaded_file)
@@ -116,3 +119,28 @@ async def list_project_files(
 
     files = await file_repo.get_multi(db, project_id=project_id)
     return [FileSummary.model_validate(f) for f in files]
+
+
+@router.get("/project/{project_id}/search")
+async def search_knowledge_base(
+    project_id: str,
+    query: str,
+    top_k: int = 4,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    project = await project_repo.get(db, project_id)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    docs = await document_repo.get_multi(db, project_id=project_id)
+    docs_payload = [
+        {
+            "id": d.id,
+            "original_name": d.title,
+            "content_text": d.content_text
+        }
+        for d in docs
+    ]
+
+    return retrieval_service.search_relevant_chunks(query=query, documents=docs_payload, top_k=top_k)
