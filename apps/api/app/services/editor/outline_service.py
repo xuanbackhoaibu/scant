@@ -1,6 +1,7 @@
 import json
 from typing import Any, Dict, List, Optional
-from app.services.ai.provider_factory import ai_factory
+from app.services.ai.gateway import ai_gateway
+from app.services.ai.types import AIRequest, AITaskType
 from app.schemas.ai import (
     AnalyzeIntentRequest, AnalyzeIntentResponse,
     OutlineGenerationRequest, OutlineGenerationResponse
@@ -14,8 +15,6 @@ class OutlineService:
 
     @staticmethod
     async def analyze_intent(req: AnalyzeIntentRequest) -> AnalyzeIntentResponse:
-        provider = ai_factory.get_provider()
-
         system_prompt = (
             "Bạn là một Principal Enterprise Document Architect & AI Strategy Consultant. "
             "Nhiệm vụ của bạn là nhận mô tả ý tưởng của người dùng, phân tích sâu sắc mục tiêu, "
@@ -35,14 +34,17 @@ DANH MỤC BAN ĐẦU (NẾU CÓ): {req.selected_type or "Tự động phân lo�
 Hãy phân tích và trả về JSON cấu trúc theo đúng format yêu cầu.
 """
 
-        res = await provider.generate(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format="json",
-            temperature=0.3
+        ai_res = await ai_gateway.execute(
+            AIRequest(
+                task_type=AITaskType.INTENT_DETECTION,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format="json",
+                temperature=0.3,
+            )
         )
 
-        raw_text = res.get("text", "{}")
+        raw_text = ai_res.text or "{}"
         try:
             data = json.loads(raw_text)
         except Exception:
@@ -65,8 +67,6 @@ Hãy phân tích và trả về JSON cấu trúc theo đúng format yêu cầu.
 
     @staticmethod
     async def generate_outline(req: OutlineGenerationRequest) -> OutlineGenerationResponse:
-        provider = ai_factory.get_provider()
-
         system_prompt = (
             "Bạn là một Principal Document Architect & Strategy Consultant. "
             "Nhiệm vụ của bạn là xây dựng cấu trúc đề cương tài liệu chuyên sâu, chuẩn mực và logic cho mọi loại tài liệu "
@@ -87,14 +87,17 @@ Hãy tạo cấu trúc đề cương hoàn chỉnh với các phần chính (Lev
 Đảm bảo tính bao quát: Tóm tắt điều hành (Executive Summary), Bối cảnh & Thực trạng, Phân tích chuyên sâu / Dữ liệu, Đề xuất chiến lược / Kế hoạch triển khai, Rủi ro & Kết luận.
 """
 
-        res = await provider.generate(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format="json",
-            temperature=0.3
+        ai_res = await ai_gateway.execute(
+            AIRequest(
+                task_type=AITaskType.OUTLINE,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format="json",
+                temperature=0.3,
+            )
         )
 
-        raw_text = res.get("text", "{}")
+        raw_text = ai_res.text or "{}"
         try:
             data = json.loads(raw_text)
         except Exception:

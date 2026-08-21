@@ -1,12 +1,13 @@
 import json
 import re
 from typing import Any, Dict, List, Optional
-from app.services.ai.provider_factory import ai_factory
+from app.services.ai.gateway import ai_gateway
+from app.services.ai.types import AIRequest, AITaskType
 
 
 class FactInspector:
     """
-    Evidence Board & Fact Inspector Engine.
+    Evidence Board & Fact Inspector Engine (Phase U8 & U18).
     Detects factual & numerical assertions in text and validates them against verified sources and datasets.
     """
 
@@ -29,7 +30,6 @@ class FactInspector:
         src_context = "\n".join([f"[{i+1}] {s.get('title')}: {s.get('summary', '')}" for i, s in enumerate(sources)])
         dataset_context = "\n".join(dataset_summaries or [])
 
-        provider = ai_factory.get_provider()
         system_prompt = (
             "Bạn là một Senior Fact-Checking Inspector & Claim Validator. "
             "Nhiệm vụ của bạn là rà soát từng luận điểm, con số, tỷ lệ phần trăm hoặc khẳng định dữ liệu trong văn bản. "
@@ -53,14 +53,17 @@ DỮ LIỆU TẬP TIN:
 Hãy phân tích và trả về JSON kết quả kiểm định sự thật.
 """
 
-        res = await provider.generate(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format="json",
-            temperature=0.2
+        ai_res = await ai_gateway.execute(
+            AIRequest(
+                task_type=AITaskType.FACT_CHECK,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format="json",
+                temperature=0.2,
+            )
         )
 
-        raw_text = res.get("text", "{}")
+        raw_text = ai_res.text or "{}"
         try:
             data = json.loads(raw_text)
         except Exception:
@@ -69,14 +72,24 @@ Hãy phân tích và trả về JSON kết quả kiểm định sự thật.
 
         claims = data.get("claims", [])
         verified_count = sum(1 for c in claims if c.get("status") == "verified")
-        unsupported_count = sum(1 for c in claims if c.get("status") in ["unsupported", "contradicted"])
+        unsupported_count = sum(1 for c in claims if c.get("status") == "unsupported")
+        contradicted_count = sum(1 for c in claims if c.get("status") == "contradicted")
+
+        score = data.get("overall_factual_score")
+        if score is None:
+            total_evaluable = verified_count + unsupported_count + contradicted_count
+            if total_evaluable == 0:
+                score = 100
+            else:
+                score = max(0, int(((verified_count) / total_evaluable) * 100))
 
         return {
             "claims": claims,
-            "overall_factual_score": data.get("overall_factual_score", 90),
+            "overall_factual_score": score,
             "verified_claims_count": verified_count,
             "unsupported_claims_count": unsupported_count,
-            "total_claims_count": len(claims),
+            "contradicted_claims_count": contradicted_count,
+            "gateway_usage": ai_res.usage.model_dump(),
         }
 
 

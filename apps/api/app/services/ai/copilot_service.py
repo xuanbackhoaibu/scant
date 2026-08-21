@@ -1,6 +1,7 @@
 import json
 from typing import Any, Dict, List, Optional
-from app.services.ai.provider_factory import ai_factory
+from app.services.ai.gateway import ai_gateway
+from app.services.ai.types import AIRequest, AITaskType
 from app.schemas.ai import CopilotMessageRequest, CopilotMessageResponse
 from app.services.knowledge.retrieval_service import retrieval_service
 
@@ -26,8 +27,6 @@ class CopilotService:
         section_title: Optional[str] = None,
         section_text: Optional[str] = None,
     ) -> CopilotMessageResponse:
-        provider = ai_factory.get_provider()
-
         # 1. Retrieve relevant knowledge chunks if relevant to message
         relevant_chunks = retrieval_service.search_relevant_chunks(
             query=req.message + (f" {req.selected_text}" if req.selected_text else ""),
@@ -69,14 +68,16 @@ YÊU CẦU CỦA NGƯỜI DÙNG:
 Hãy đưa ra câu trả lời và nội dung đề xuất tốt nhất. Nếu người dùng yêu cầu viết hoặc sửa văn bản, hãy cung cấp nội dung hoàn chỉnh để người dùng có thể chèn trực tiếp vào tài liệu.
 """
 
-        res = await provider.generate(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            temperature=0.3,
-            max_tokens=3000
+        ai_res = await ai_gateway.execute(
+            AIRequest(
+                task_type=AITaskType.REWRITE if req.selected_text else AITaskType.SECTION_WRITING,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                temperature=0.3,
+            )
         )
 
-        reply_text = res.get("text", "")
+        reply_text = ai_res.text or ""
 
         return CopilotMessageResponse(
             reply=reply_text,

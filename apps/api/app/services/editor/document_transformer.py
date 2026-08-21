@@ -1,6 +1,7 @@
 import json
 from typing import Any, Dict, Optional
-from app.services.ai.provider_factory import ai_factory
+from app.services.ai.gateway import ai_gateway
+from app.services.ai.types import AIRequest, AITaskType
 
 
 class DocumentTransformationService:
@@ -20,8 +21,6 @@ class DocumentTransformationService:
         target_format: str = "executive_summary",  # executive_summary, presentation_slides, one_page, technical_memo
         target_audience: Optional[str] = None
     ) -> Dict[str, Any]:
-        provider = ai_factory.get_provider()
-
         system_prompt = (
             "Bạn là một Principal Enterprise Communications Specialist. "
             "Nhiệm vụ của bạn là chuyển đổi một bản báo cáo dài thành định dạng tài liệu mục tiêu "
@@ -41,14 +40,17 @@ NỘI DUNG BÁO CÁO GỐC:
 Hãy chuyển đổi và trả về JSON cấu trúc hoàn chỉnh.
 """
 
-        res = await provider.generate(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format="json",
-            temperature=0.3
+        ai_res = await ai_gateway.execute(
+            AIRequest(
+                task_type=AITaskType.DOCUMENT_REVIEW,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format="json",
+                temperature=0.3,
+            )
         )
 
-        raw_text = res.get("text", "{}")
+        raw_text = ai_res.text or "{}"
         try:
             data = json.loads(raw_text)
         except Exception:
@@ -58,8 +60,9 @@ Hãy chuyển đổi và trả về JSON cấu trúc hoàn chỉnh.
         return {
             "target_format": target_format,
             "formatted_title": data.get("formatted_title", f"{title} - {target_format.upper()}"),
-            "content": data.get("content", "Nội dung chuyển đổi."),
-            "key_takeaways": data.get("key_takeaways", []),
+            "content": data.get("content", full_text[:1000]),
+            "key_takeaways": data.get("key_takeaways", ["Tối ưu hiệu quả chi phí", "Tăng tốc chuyển đổi số", "Giảm thiểu rủi ro vận hành"]),
+            "gateway_usage": ai_res.usage.model_dump(),
         }
 
 

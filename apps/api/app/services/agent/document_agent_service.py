@@ -5,7 +5,8 @@ from app.models.entities import Project, Report, ReportSection
 from app.repositories.project_repo import project_repo, document_repo, file_repo
 from app.repositories.report_repo import report_repo, section_repo
 from app.repositories.source_repo import source_repo
-from app.services.ai.provider_factory import ai_factory
+from app.services.ai.gateway import ai_gateway
+from app.services.ai.types import AIRequest, AITaskType
 from app.services.agent.agent_tool_registry import agent_tool_registry
 from app.services.research.search_engine import search_engine
 from app.services.research.source_ranker import source_ranker
@@ -15,8 +16,8 @@ from app.services.quality.multi_profile_quality_engine import multi_profile_qual
 
 class DocumentAgentService:
     """
-    Autonomous Document Agent Service (Phase U12).
-    Processes multi-turn requests by selecting and executing validated tools safely.
+    Autonomous Document Agent Service (Phase U12 & U18).
+    Processes multi-turn requests by selecting and executing validated tools safely via AI Gateway.
     """
 
     @classmethod
@@ -67,15 +68,17 @@ DANH MỤC CÔNG CỤ KHẢ DỤNG:
 Hãy phân tích và trả về JSON cấu trúc hoàn chỉnh.
 """
 
-        provider = ai_factory.get_provider()
-        res = await provider.generate(
-            prompt=user_prompt,
-            system_prompt=system_prompt,
-            response_format="json",
-            temperature=0.2
+        ai_res = await ai_gateway.execute(
+            AIRequest(
+                task_type=AITaskType.AGENT_REASONING,
+                prompt=user_prompt,
+                system_prompt=system_prompt,
+                response_format="json",
+                temperature=0.2,
+            )
         )
 
-        raw_text = res.get("text", "{}")
+        raw_text = ai_res.text or "{}"
         try:
             data = json.loads(raw_text)
         except Exception:
@@ -107,6 +110,7 @@ Hãy phân tích và trả về JSON cấu trúc hoàn chỉnh.
             "thoughts": data.get("thoughts", ""),
             "message_to_user": data.get("message_to_user", "Tôi đã thực hiện các điều chỉnh theo yêu cầu của bạn."),
             "actions_executed": executed_actions,
+            "gateway_usage": ai_res.usage.model_dump(),
         }
 
     @classmethod
