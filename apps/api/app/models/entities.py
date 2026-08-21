@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import (
     Column, String, Text, Integer, Float, Boolean, DateTime, ForeignKey, JSON
 )
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from app.core.database import Base
 
 
@@ -317,6 +317,20 @@ class AIGeneration(Base):
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
 
 
+class ProjectMember(Base):
+    __tablename__ = "project_members"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    invited_email = Column(String(255), nullable=True)
+    role = Column(String(50), default="editor", nullable=False)  # owner, editor, commenter, viewer
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+
+    project = relationship("Project", backref="members")
+    user = relationship("User")
+
+
 class Comment(Base):
     __tablename__ = "comments"
 
@@ -324,13 +338,17 @@ class Comment(Base):
     report_id = Column(String(36), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
     report_section_id = Column(String(36), ForeignKey("report_sections.id", ondelete="SET NULL"), nullable=True)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    parent_id = Column(String(36), ForeignKey("comments.id", ondelete="CASCADE"), nullable=True)
     selected_text = Column(Text, nullable=True)
     comment_text = Column(Text, nullable=False)
     status = Column(String(50), default="open", nullable=False)  # open, resolved
+    mentions_json = Column(JSON, default=list, nullable=False)
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
 
     report = relationship("Report", back_populates="comments")
+    replies = relationship("Comment", backref=backref("parent", remote_side=[id]), cascade="all, delete-orphan")
+    user = relationship("User")
 
 
 class ExportRecord(Base):
