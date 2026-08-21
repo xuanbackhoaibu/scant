@@ -7,6 +7,7 @@ __pycache__/
 
 # Next.js
 .next/
+**/.next/
 out/
 build/
 dist/
