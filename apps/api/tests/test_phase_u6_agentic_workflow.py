@@ -10,12 +10,15 @@ test_engine = create_async_engine(TEST_DB_URL, connect_args={"check_same_thread"
 TestAsyncSession = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
+import asyncio
+
 @pytest_asyncio.fixture(scope="function")
 async def db_session():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     async with TestAsyncSession() as session:
         yield session
+    await asyncio.sleep(0.3)
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
