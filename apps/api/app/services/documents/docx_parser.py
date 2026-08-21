@@ -93,5 +93,7 @@ class DocxParser:
             "word_count": len(full_text.split()),
         }
 
+    parse = extract_document
+
 
 docx_parser = DocxParser()

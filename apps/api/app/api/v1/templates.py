@@ -1,6 +1,6 @@
 import hashlib
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
@@ -10,6 +10,7 @@ from app.repositories.template_repo import template_repo, template_version_repo
 from app.schemas.template import TemplateCreate, TemplateResponse, TemplateVersionResponse
 from app.api.deps import get_current_user, get_current_user_optional
 from app.services.templates.docx_template_analyzer import template_analyzer
+from app.services.templates.template_reverse_engineering_service import template_reverse_engineer
 
 router = APIRouter(prefix="/templates", tags=["templates"])
 
@@ -43,10 +44,39 @@ async def list_templates(
     return responses
 
 
+@router.post("/reverse-engineer")
+async def reverse_engineer_template(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Decomposes an uploaded DOCX or PDF template into dynamic schema, fields, and styles."""
+    filename = file.filename or "template.docx"
+    ext = Path(filename).suffix.lower()
+    if ext not in [".docx", ".doc", ".pdf"]:
+        raise HTTPException(status_code=400, detail="Only .docx and .pdf files are supported")
+
+    contents = await file.read()
+    file_hash = hashlib.sha256(contents).hexdigest()
+    stored_filename = f"tpl_rev_{file_hash[:12]}_{filename}"
+    file_path = settings.TEMPLATE_DIR / stored_filename
+
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    if ext in [".docx", ".doc"]:
+        schema = await template_reverse_engineer.reverse_engineer_docx(str(file_path))
+    else:
+        schema = await template_reverse_engineer.reverse_engineer_pdf(str(file_path))
+
+    schema["stored_file_path"] = str(file_path)
+    schema["original_filename"] = filename
+    return schema
+
+
 @router.post("/upload-docx", response_model=TemplateResponse)
 async def upload_docx_template(
     name: str = Form(...),
-    category: str = Form("academic"),
+    category: str = Form("business"),
     organization: str = Form(None),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
@@ -65,28 +95,30 @@ async def upload_docx_template(
     with open(file_path, "wb") as f:
         f.write(contents)
 
-    # Analyze Word Template XML & Styles
-    analysis = template_analyzer.analyze_template(str(file_path))
+    # Reverse engineer schema
+    schema = await template_reverse_engineer.reverse_engineer_docx(str(file_path))
 
     template = await template_repo.create(db, obj_in={
         "user_id": current_user.id,
         "name": name,
         "category": category,
-        "description": f"Mẫu Word trích xuất từ file {filename}",
+        "description": f"Mẫu văn bản trích xuất từ file {filename}",
         "is_system": False,
         "is_public": False,
         "organization": organization,
+        "schema_json": schema,
     })
 
     version = await template_version_repo.create(db, obj_in={
         "template_id": template.id,
         "version_number": 1,
-        "styles_json": analysis["styles"],
+        "styles_json": schema.get("styles", {}),
         "placeholders_json": {
-            "explicit": analysis["explicit_placeholders"],
-            "detected": analysis["detected_fields"],
+            "explicit": schema.get("explicit_placeholders", []),
+            "detected": schema.get("fields", []),
         },
-        "raw_file_path": str(file_path),
+        "schema_json": schema,
+        "file_path": str(file_path),
     })
 
     return TemplateResponse(
