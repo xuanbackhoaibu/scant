@@ -1,0 +1,12 @@
+{
+  "/_not-found/page": "/_not-found",
+  "/(auth)/register/page": "/register",
+  "/(auth)/login/page": "/login",
+  "/projects/[id]/page": "/projects/[id]",
+  "/projects/new/page": "/projects/new",
+  "/reports/[id]/editor/page": "/reports/[id]/editor",
+  "/(dashboard)/projects/page": "/projects",
+  "/(dashboard)/templates/page": "/templates",
+  "/(dashboard)/page": "/",
+  "/(dashboard)/sources/page": "/sources"
+}

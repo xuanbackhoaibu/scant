@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Next.js
+.next/
+out/
+build/
+dist/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Storage and DB files
+storage/*.db
+storage/uploads/*
+storage/templates/*
+storage/exports/*
+storage/reports/*
+!storage/uploads/.gitkeep
+!storage/templates/.gitkeep
+!storage/exports/.gitkeep
+!storage/reports/.gitkeep
+
+# Logs and OS
+*.log
+.DS_Store
+.vscode/
+.idea/
