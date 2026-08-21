@@ -32,11 +32,11 @@ source venv/bin/activate
 # Cài đặt dependencies (nếu chưa cài)
 pip install -r requirements.txt
 
-# Chạy server
-uvicorn app.main:app --reload --port 8000
+# Chạy server API trên cổng 8050
+uvicorn app.main:app --reload --port 8050
 ```
-- API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Health Check: [http://localhost:8000/api/v1/health](http://localhost:8000/api/v1/health)
+- API Docs: [http://localhost:8050/docs](http://localhost:8050/docs)
+- Health Check: [http://localhost:8050/api/v1/health](http://localhost:8050/api/v1/health)
 
 ### 2. Khởi chạy Frontend Web
 
@@ -47,10 +47,10 @@ cd apps/web
 # Cài đặt dependencies (nếu chưa cài)
 npm install
 
-# Chạy Next.js development server
+# Chạy Next.js development server trên cổng 3050
 npm run dev
 ```
-- Web Application: [http://localhost:3000](http://localhost:3000)
+- Web Application: [http://localhost:3050](http://localhost:3050)
 
 ### 3. Chạy Test Suite
 

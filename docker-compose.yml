@@ -29,7 +29,7 @@ services:
       - JWT_SECRET=ai-report-studio-vip-pro-super-secret-key-32chars-min!
       - ENVIRONMENT=production
     ports:
-      - "8000:8000"
+      - "8050:8050"
     depends_on:
       - postgres
       - redis
@@ -43,9 +43,9 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: ai_report_studio_web
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+      - NEXT_PUBLIC_API_URL=http://localhost:8050/api/v1
     ports:
-      - "3000:3000"
+      - "3050:3050"
     depends_on:
       - api
     restart: unless-stopped
