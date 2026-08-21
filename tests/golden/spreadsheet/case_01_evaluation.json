@@ -1,0 +1,5 @@
+{
+  "metric": "numeric_accuracy",
+  "min_acceptable_score": 1.0,
+  "required_keys": ["total_revenue", "total_cost", "net_profit"]
+}

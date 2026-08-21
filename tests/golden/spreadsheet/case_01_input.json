@@ -1,0 +1,8 @@
+{
+  "dataset_name": "quarterly_revenue.csv",
+  "records": [
+    {"department": "Sales", "revenue": 100.0, "cost": 60.0},
+    {"department": "Engineering", "revenue": 0.0, "cost": 80.0},
+    {"department": "Marketing", "revenue": 50.0, "cost": 40.0}
+  ]
+}

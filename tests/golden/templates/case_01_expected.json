@@ -1,0 +1,6 @@
+{
+  "template_name": "consulting_standard.docx",
+  "expected_fonts": ["Calibri", "Arial"],
+  "expected_margins": {"top": 1.0, "bottom": 1.0, "left": 1.0, "right": 1.0},
+  "required_placeholders": ["{{TITLE}}", "{{AUTHOR}}", "{{EXECUTIVE_SUMMARY}}"]
+}

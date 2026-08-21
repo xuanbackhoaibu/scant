@@ -1,0 +1,6 @@
+{
+  "topic": "Zero Trust Enterprise Architecture",
+  "expected_subquestions_count": 3,
+  "min_evidence_nodes": 3,
+  "required_entities": ["identity", "microsegmentation", "least privilege"]
+}

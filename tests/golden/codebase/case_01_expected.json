@@ -1,0 +1,6 @@
+{
+  "project_type": "fullstack_python_nextjs",
+  "expected_languages": ["Python", "TypeScript"],
+  "expected_frameworks": ["FastAPI", "Next.js"],
+  "min_routes_discovered": 1
+}
