@@ -1,123 +1,185 @@
 "use client";
 
-import { useState } from "react";
-import { Layers, FileUp, Sparkles, CheckCircle2, Search, Building2, School } from "lucide-react";
+import { useEffect, useState } from "react";
+import { LayoutTemplate, Plus, Search, Filter, Copy, Globe, Lock, ArrowRight, Star } from "lucide-react";
+import { api } from "@/lib/api";
+import { useRouter } from "next/navigation";
 
-const initialTemplates = [
-  {
-    id: "tpl_bkhn_cntt",
-    name: "Mẫu Báo cáo Bài tập lớn / Đồ án CNTT - ĐH Bách Khoa",
-    category: "academic",
-    org: "Đại học Bách Khoa Hà Nội",
-    paper: "A4 (Trái 30mm, Phải 20mm, Trên 20mm, Dưới 20mm)",
-    font: "Times New Roman (13pt, Dãn dòng 1.5)",
-    isSystem: true,
-  },
-  {
-    id: "tpl_fpt_se",
-    name: "Mẫu Khóa luận & Báo cáo Capstone Project - ĐH FPT",
-    category: "academic",
-    org: "Trường Đại học FPT",
-    paper: "A4 (Trái 35mm, Phải 20mm, Trên 25mm, Dưới 25mm)",
-    font: "Times New Roman (12pt, Dãn dòng 1.3)",
-    isSystem: true,
-  },
-  {
-    id: "tpl_uit_thesis",
-    name: "Mẫu Báo cáo Đồ án Tốt nghiệp - ĐH CNTT ĐHQG-HCM (UIT)",
-    category: "academic",
-    org: "ĐH Công nghệ Thông tin - ĐHQG-HCM",
-    paper: "A4 (Trái 30mm, Phải 20mm, Trên 20mm, Dưới 20mm)",
-    font: "Times New Roman (13pt, Dãn dòng 1.5)",
-    isSystem: true,
-  },
-  {
-    id: "tpl_business_kpi",
-    name: "Mẫu Báo cáo Doanh thu & Phân tích KPI Doanh nghiệp",
-    category: "business",
-    org: "Chuẩn Doanh nghiệp Standard",
-    paper: "A4 (Trái 25mm, Phải 25mm, Trên 20mm, Dưới 20mm)",
-    font: "Inter / Arial (11pt, Dãn dòng 1.25)",
-    isSystem: true,
-  },
+const CATEGORIES = [
+  { id: "all", label: "Tất cả" },
+  { id: "business", label: "Business" },
+  { id: "financial", label: "Financial" },
+  { id: "technical", label: "Technical" },
+  { id: "research", label: "Research" },
+  { id: "data", label: "Data" },
+  { id: "proposal", label: "Proposal" },
+  { id: "marketing", label: "Marketing" },
+  { id: "operations", label: "Operations" },
+  { id: "custom", label: "Custom" },
 ];
 
 export default function TemplatesPage() {
+  const router = useRouter();
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [scope, setScope] = useState<"public" | "workspace" | "my">("public");
+  const [category, setCategory] = useState("all");
   const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const filtered = initialTemplates.filter(
-    (t) =>
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.org.toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    async function loadTemplates() {
+      setLoading(true);
+      try {
+        const res = await api.templates.list();
+        setTemplates(res || []);
+      } catch {
+        // empty
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadTemplates();
+  }, [scope, category]);
+
+  const handleUseTemplate = (tplId: string) => {
+    router.push(`/projects/new?template=${tplId}`);
+  };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Thư viện Mẫu Báo Cáo (Templates)</h1>
-          <p className="text-xs text-slate-500">
-            Hỗ trợ tự động trích xuất lề, phông chữ, bìa và kiểu heading từ file Word .docx của các trường
-          </p>
+          <h1 className="text-xl font-bold text-slate-900">Thư Viện Mẫu (Template Marketplace)</h1>
+          <p className="text-xs text-slate-500">Kho mẫu báo cáo chuẩn quốc tế, tài liệu kỹ thuật & mẫu doanh nghiệp</p>
         </div>
-
-        <button className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto">
-          <FileUp className="h-4 w-4" />
-          <span>Tải lên Mẫu Word (.docx)</span>
-        </button>
       </div>
 
-      <div className="bg-white p-3 rounded-xl border border-slate-200">
-        <div className="relative w-full sm:w-80">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+      {/* Tabs & Search */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
+          {[
+            { id: "public", label: "Public Marketplace" },
+            { id: "workspace", label: "Workspace" },
+            { id: "my", label: "My Templates" },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setScope(t.id as any)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                scope === t.id ? "bg-white text-indigo-600 shadow-xs" : "text-slate-500 hover:text-slate-900"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Tìm mẫu theo tên trường, môn học..."
-            className="w-full h-9 pl-9 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:border-indigo-500 outline-none transition-all"
+            placeholder="Tìm mẫu báo cáo..."
+            className="w-full h-8 pl-8 pr-3 text-xs bg-slate-50 border border-slate-200 rounded-lg outline-none"
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filtered.map((tpl) => (
-          <div
-            key={tpl.id}
-            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:border-indigo-300 transition-all flex flex-col justify-between"
+      {/* Categories */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        {CATEGORIES.map((c) => (
+          <button
+            key={c.id}
+            onClick={() => setCategory(c.id)}
+            className={`px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition-colors ${
+              category === c.id ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
           >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
-                  <School className="h-3.5 w-3.5 text-indigo-600" />
-                  {tpl.org}
-                </span>
-                <span className="text-[10px] font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                  System Standard
-                </span>
-              </div>
-
-              <h3 className="text-sm font-bold text-slate-900 mb-2">{tpl.name}</h3>
-
-              <div className="space-y-1.5 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                <p>
-                  <strong className="text-slate-700">Căn lề:</strong> {tpl.paper}
-                </p>
-                <p>
-                  <strong className="text-slate-700">Typography:</strong> {tpl.font}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Đầy đủ Placeholder & XML Structure</span>
-              <button className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
-                Sử dụng mẫu này →
-              </button>
-            </div>
-          </div>
+            {c.label}
+          </button>
         ))}
       </div>
+
+      {/* Template Grid */}
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-48 bg-slate-100 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            {
+              id: "tpl_corp_standard",
+              name: "Executive Business Report",
+              category: "Business",
+              desc: "Báo cáo chiến lược doanh nghiệp, kế hoạch phát triển thị trường và phân bổ nguồn lực.",
+              author: "AI Studio Official",
+              usage: 1240,
+              rating: 4.9,
+            },
+            {
+              id: "tpl_technical_doc",
+              name: "Technical Architecture Whitepaper",
+              category: "Technical",
+              desc: "Mẫu tài liệu kiến trúc kỹ thuật phần mềm, đặc tả API và thiết kế hạ tầng Cloud.",
+              author: "Cloud Architects",
+              usage: 830,
+              rating: 5.0,
+            },
+            {
+              id: "tpl_financial_kpi",
+              name: "Financial Audit & KPI Review",
+              category: "Financial",
+              desc: "Báo cáo tài chính chi tiết với bảng đối soát doanh thu, chi phí, EBITDA và dòng tiền.",
+              author: "Finance Expert",
+              usage: 950,
+              rating: 4.8,
+            },
+            {
+              id: "tpl_market_research",
+              name: "Comprehensive Market Research",
+              category: "Marketing",
+              desc: "Khảo sát quy mô thị trường, phân tích đối thủ cạnh tranh, chân dung khách hàng mục tiêu.",
+              author: "Market Insights",
+              usage: 620,
+              rating: 4.9,
+            },
+          ].map((tpl) => (
+            <div
+              key={tpl.id}
+              className="bg-white p-5 rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-xs transition-all flex flex-col justify-between space-y-4"
+            >
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="px-2 py-0.5 rounded bg-indigo-50 text-[10px] font-bold text-indigo-700 uppercase">
+                    {tpl.category}
+                  </span>
+                  <span className="flex items-center gap-1 text-[11px] font-bold text-amber-600">
+                    <Star className="h-3 w-3 fill-amber-500 text-amber-500" />
+                    <span>{tpl.rating}</span>
+                  </span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 leading-snug">{tpl.name}</h3>
+                <p className="text-xs text-slate-500 leading-relaxed line-clamp-2">{tpl.desc}</p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="text-[11px] text-slate-400">{tpl.usage} lượt sử dụng</span>
+                <button
+                  onClick={() => handleUseTemplate(tpl.id)}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-xs transition-colors"
+                >
+                  <span>Sử dụng mẫu</span>
+                  <ArrowRight className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

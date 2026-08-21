@@ -117,15 +117,20 @@ class Template(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     name = Column(String(255), nullable=False)
-    category = Column(String(50), default="business", nullable=False)  # business, technical, financial, research, proposal, custom
+    category = Column(String(50), default="business", nullable=False)  # business, financial, technical, research, data, proposal, marketing, operations, custom
     description = Column(Text, nullable=True)
     thumbnail_url = Column(String(1024), nullable=True)
     is_system = Column(Boolean, default=False, nullable=False)
     is_public = Column(Boolean, default=False, nullable=False)
+    visibility = Column(String(50), default="public", nullable=False)  # my, workspace, public
+    author_name = Column(String(255), default="AI Studio Official", nullable=False)
+    usage_count = Column(Integer, default=0, nullable=False)
+    rating = Column(Float, default=5.0, nullable=False)
+    tags_json = Column(JSON, default=list, nullable=False)
     organization = Column(String(255), nullable=True)  # Company or Organization Name
     schema_json = Column(JSON, default=dict, nullable=False)  # Reverse-engineered document schema & dynamic fields
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
 
     user = relationship("User", back_populates="templates")
     versions = relationship("TemplateVersion", back_populates="template", cascade="all, delete-orphan")

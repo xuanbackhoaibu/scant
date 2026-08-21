@@ -15,33 +15,80 @@ from app.services.templates.template_reverse_engineering_service import template
 router = APIRouter(prefix="/templates", tags=["templates"])
 
 
-@router.get("", response_model=List[TemplateResponse])
+@router.get("")
 async def list_templates(
+    scope: str = "public",  # my, workspace, public, all
+    category: Optional[str] = None,
+    search: Optional[str] = None,
     current_user: User = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.templates.template_library_service import template_library_service
     user_id = current_user.id if current_user else None
-    templates = await template_repo.get_available(db, user_id=user_id)
-    
-    responses = []
-    for t in templates:
-        latest_ver = t.versions[0] if t.versions else None
-        res = TemplateResponse(
-            id=t.id,
-            user_id=t.user_id,
-            name=t.name,
-            category=t.category,
-            description=t.description,
-            is_system=t.is_system,
-            is_public=t.is_public,
-            organization=t.organization,
-            created_at=t.created_at,
-            updated_at=t.updated_at,
-            latest_version=TemplateVersionResponse.model_validate(latest_ver) if latest_ver else None
-        )
-        responses.append(res)
+    return await template_library_service.list_templates(
+        db=db,
+        current_user_id=user_id,
+        scope=scope,
+        category=category,
+        search=search,
+    )
 
-    return responses
+
+@router.post("/{template_id}/duplicate")
+async def duplicate_template(
+    template_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.templates.template_library_service import template_library_service
+    return await template_library_service.duplicate_template(
+        db=db,
+        template_id=template_id,
+        user_id=current_user.id,
+        user_name=current_user.name
+    )
+
+
+@router.post("/{template_id}/publish")
+async def publish_template(
+    template_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.templates.template_library_service import template_library_service
+    return await template_library_service.toggle_publish(
+        db=db,
+        template_id=template_id,
+        user_id=current_user.id,
+        publish=True
+    )
+
+
+@router.post("/{template_id}/unpublish")
+async def unpublish_template(
+    template_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.templates.template_library_service import template_library_service
+    return await template_library_service.toggle_publish(
+        db=db,
+        template_id=template_id,
+        user_id=current_user.id,
+        publish=False
+    )
+
+
+@router.post("/{template_id}/use")
+async def use_template(
+    template_id: str,
+    current_user: User = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.templates.template_library_service import template_library_service
+    await template_library_service.record_usage(db, template_id)
+    return {"status": "success", "template_id": template_id}
+
 
 
 @router.post("/reverse-engineer")
