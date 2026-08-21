@@ -24,6 +24,8 @@ class User(Base):
     name = Column(String(255), nullable=False)
     avatar = Column(String(500), nullable=True)
     plan = Column(String(50), default="pro", nullable=False)  # free, pro, enterprise
+    role = Column(String(50), default="user", nullable=False)  # user, admin
+    is_superuser = Column(Boolean, default=False, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
