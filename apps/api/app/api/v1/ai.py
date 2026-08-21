@@ -177,3 +177,31 @@ async def chat_copilot(
         section_text=section.plain_text if section else None,
     )
 
+
+@router.post("/inspect-facts")
+async def inspect_section_facts(
+    project_id: str,
+    text: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fact checks claims, percentages, and statements against project sources and data."""
+    project = await project_repo.get(db, project_id)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    from app.services.citations.fact_inspector import fact_inspector
+
+    sources_raw = await source_repo.get_by_project(db, project_id)
+    sources_payload = [{"title": s.title, "publisher": s.publisher, "summary": s.summary} for s in sources_raw]
+
+    docs = await document_repo.get_multi(db, project_id=project_id)
+    dataset_summaries = [f"File {d.title}: {d.content_text[:300]}" for d in docs if d.document_type == "dataset"]
+
+    return await fact_inspector.inspect_facts(
+        text=text,
+        sources=sources_payload,
+        dataset_summaries=dataset_summaries
+    )
+
+
