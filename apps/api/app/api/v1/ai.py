@@ -1,3 +1,5 @@
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -238,6 +240,41 @@ async def transform_document(
         target_format=target_format,
         target_audience=(project.metadata_json or {}).get("audience")
     )
+
+
+class AgentTurnRequest(BaseModel):
+    project_id: str
+    report_id: Optional[str] = None
+    message: str
+    active_section_id: Optional[str] = None
+    selected_text: Optional[str] = None
+
+
+@router.get("/agent/tools")
+async def list_agent_tools(current_user: User = Depends(get_current_user)):
+    """Phase U12: Lists all available tools for Document Agent."""
+    from app.services.agent.agent_tool_registry import agent_tool_registry
+    return agent_tool_registry.list_tools()
+
+
+@router.post("/agent/execute-turn")
+async def execute_agent_turn(
+    req: AgentTurnRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Phase U12: Executes an autonomous multi-tool turn for Document Agent."""
+    from app.services.agent.document_agent_service import document_agent_service
+
+    return await document_agent_service.execute_turn(
+        db=db,
+        project_id=req.project_id,
+        report_id=req.report_id,
+        user_message=req.message,
+        active_section_id=req.active_section_id,
+        selected_text=req.selected_text,
+    )
+
 
 
 
