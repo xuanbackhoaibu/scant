@@ -20,9 +20,14 @@ class User(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     email = Column(String(255), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=True)  # nullable for pure OAuth users
     name = Column(String(255), nullable=False)
     avatar = Column(String(500), nullable=True)
+    avatar_url = Column(String(500), nullable=True)
+    google_sub = Column(String(255), unique=True, index=True, nullable=True)
+    preferred_locale = Column(String(10), default="vi", nullable=False)  # "vi" | "en"
+    theme = Column(String(20), default="system", nullable=False)  # "light" | "dark" | "system"
+    document_language = Column(String(10), default="vi", nullable=False)  # "vi" | "en" | "auto"
     plan = Column(String(50), default="pro", nullable=False)  # free, pro, enterprise
     role = Column(String(50), default="user", nullable=False)  # user, admin
     is_superuser = Column(Boolean, default=False, nullable=False)
@@ -33,6 +38,21 @@ class User(Base):
     projects = relationship("Project", back_populates="user", cascade="all, delete-orphan")
     workspaces = relationship("Workspace", back_populates="user", cascade="all, delete-orphan")
     templates = relationship("Template", back_populates="user", cascade="all, delete-orphan")
+    auth_accounts = relationship("AuthAccount", back_populates="user", cascade="all, delete-orphan")
+
+
+class AuthAccount(Base):
+    __tablename__ = "auth_accounts"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(String(50), nullable=False)  # "google" | "password" | "github"
+    provider_account_id = Column(String(255), nullable=False)  # google sub or email
+    email = Column(String(255), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    last_login_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
+
+    user = relationship("User", back_populates="auth_accounts")
 
 
 class Workspace(Base):

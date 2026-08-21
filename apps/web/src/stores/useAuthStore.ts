@@ -6,7 +6,14 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
+  avatar_url?: string;
+  google_sub?: string;
+  preferred_locale?: string;
+  theme?: string;
+  document_language?: string;
   plan: string;
+  role?: string;
+  is_superuser?: boolean;
   is_active: boolean;
   created_at: string;
 }

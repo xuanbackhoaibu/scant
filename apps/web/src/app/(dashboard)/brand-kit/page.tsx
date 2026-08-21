@@ -1,39 +1,92 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Palette, Check, Save } from "lucide-react";
+import { useTranslation } from "@/i18n/I18nContext";
+import { useToast } from "@/components/Toast";
 
 export default function BrandKitPage() {
+  const { t } = useTranslation();
+  const toast = useToast();
+
   const [primaryColor, setPrimaryColor] = useState("#1E3A8A");
   const [secondaryColor, setSecondaryColor] = useState("#0D9488");
   const [fontFamily, setFontFamily] = useState("Inter");
   const [headerText, setHeaderText] = useState("DOANH NGHIỆP • BÁO CÁO CHIẾN LƯỢC");
   const [confidentiality, setConfidentiality] = useState("STRICTLY CONFIDENTIAL");
-  const [saved, setSaved] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  useEffect(() => {
+    async function loadBrandKit() {
+      try {
+        const token = localStorage.getItem("auth_token");
+        const res = await fetch("http://localhost:8050/api/v1/brand-kit", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.primary_color) setPrimaryColor(data.primary_color);
+          if (data.secondary_color) setSecondaryColor(data.secondary_color);
+          if (data.primary_font) setFontFamily(data.primary_font);
+          if (data.header_text) setHeaderText(data.header_text);
+          if (data.confidentiality_notice) setConfidentiality(data.confidentiality_notice);
+        }
+      } catch {
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadBrandKit();
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const token = localStorage.getItem("auth_token");
+      const res = await fetch("http://localhost:8050/api/v1/brand-kit", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          primary_color: primaryColor,
+          secondary_color: secondaryColor,
+          primary_font: fontFamily,
+          heading_font: fontFamily,
+          header_text: headerText,
+          confidentiality_notice: confidentiality,
+        })
+      });
+
+      if (!res.ok) throw new Error("Save failed");
+      toast.success(t("brandKit.brandKitSaved"));
+    } catch {
+      toast.error(t("common.errorOccurred"));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6 max-w-4xl py-2">
       <div>
-        <h1 className="text-xl font-bold text-slate-900">Bộ Nhận Diện Thương Hiệu (Brand Kit)</h1>
-        <p className="text-xs text-slate-500">Tùy biến màu sắc, kiểu chữ và header/footer xuất bản cho toàn bộ tài liệu</p>
+        <h1 className="text-xl font-bold text-slate-900">{t("brandKit.title")}</h1>
+        <p className="text-xs text-slate-500">{t("brandKit.subtitle")}</p>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-6 text-xs">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-6 text-xs">
         {/* Colors */}
         <div className="space-y-3">
           <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
             <Palette className="h-4 w-4 text-indigo-600" />
-            <span>Màu sắc thương hiệu</span>
+            <span>{t("brandKit.title")}</span>
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-slate-600 mb-1 font-medium">Màu chủ đạo (Primary Color)</label>
+              <label className="block text-slate-600 mb-1 font-medium">{t("brandKit.primaryColor")}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -51,7 +104,7 @@ export default function BrandKitPage() {
             </div>
 
             <div>
-              <label className="block text-slate-600 mb-1 font-medium">Màu phụ (Secondary Color)</label>
+              <label className="block text-slate-600 mb-1 font-medium">{t("brandKit.secondaryColor")}</label>
               <div className="flex items-center gap-2">
                 <input
                   type="color"
@@ -70,11 +123,29 @@ export default function BrandKitPage() {
           </div>
         </div>
 
+        {/* Typography */}
+        <div className="space-y-3 pt-4 border-t border-slate-100">
+          <h3 className="font-bold text-slate-800 text-sm">{t("brandKit.primaryFont")}</h3>
+          <div className="max-w-xs">
+            <select
+              value={fontFamily}
+              onChange={(e) => setFontFamily(e.target.value)}
+              className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-lg outline-none"
+            >
+              <option value="Inter">Inter (Hiện đại & Tối giản)</option>
+              <option value="Calibri">Calibri (Tư vấn quản trị)</option>
+              <option value="Times New Roman">Times New Roman (Hàn lâm / Tài chính)</option>
+              <option value="Roboto">Roboto (Kỹ thuật)</option>
+              <option value="Plus Jakarta Sans">Plus Jakarta Sans (Tạp chí cao cấp)</option>
+            </select>
+          </div>
+        </div>
+
         {/* Header & Footer */}
         <div className="space-y-3 pt-4 border-t border-slate-100">
-          <h3 className="font-bold text-slate-800 text-sm">Header & Footer Mặc Định</h3>
+          <h3 className="font-bold text-slate-800 text-sm">{t("brandKit.headerText")} & Footer</h3>
           <div>
-            <label className="block text-slate-600 mb-1 font-medium">Nội dung Header trang:</label>
+            <label className="block text-slate-600 mb-1 font-medium">{t("brandKit.headerText")}:</label>
             <input
               type="text"
               value={headerText}
@@ -84,7 +155,7 @@ export default function BrandKitPage() {
           </div>
 
           <div>
-            <label className="block text-slate-600 mb-1 font-medium">Thông báo bảo mật:</label>
+            <label className="block text-slate-600 mb-1 font-medium">{t("brandKit.confidentialityNotice")}:</label>
             <input
               type="text"
               value={confidentiality}
@@ -94,21 +165,14 @@ export default function BrandKitPage() {
           </div>
         </div>
 
-        <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-          {saved ? (
-            <span className="text-emerald-600 font-bold flex items-center gap-1">
-              <Check className="h-4 w-4" /> Đã lưu cài đặt Brand Kit
-            </span>
-          ) : (
-            <span />
-          )}
-
+        <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
           <button
             onClick={handleSave}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-xs transition-colors"
+            disabled={saving}
+            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-xs transition-colors disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
-            <span>Lưu thay đổi</span>
+            <span>{saving ? t("common.saving") : t("brandKit.saveBrandKit")}</span>
           </button>
         </div>
       </div>
