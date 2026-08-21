@@ -92,3 +92,92 @@ async def create_chart_specification(
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Chart building error: {str(e)}")
+
+
+# Phase U17: Connectors, Mapping, Dependency Graph
+
+class ConnectorTestRequest(BaseModel):
+    connector_type: str  # csv, postgresql, mysql, rest
+    config: Dict[str, Any]
+
+
+class SmartMappingRequest(BaseModel):
+    columns: List[str]
+
+
+class SaveMappingRequest(BaseModel):
+    columns: List[str]
+    mapping: Dict[str, str]
+
+
+class RegisterDependencyRequest(BaseModel):
+    report_id: str
+    source_node: str  # dataset_id or kpi_id
+    target_node: str  # chart_id or section_id
+
+
+class InvalidateDependencyRequest(BaseModel):
+    report_id: str
+    source_node: str
+
+
+@router.post("/connectors/test")
+async def test_connector(
+    req: ConnectorTestRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.data.connectors import get_connector
+    connector = get_connector(req.connector_type, req.config)
+    return await connector.test_connection()
+
+
+@router.post("/connectors/schema")
+async def get_connector_schema(
+    req: ConnectorTestRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.data.connectors import get_connector
+    connector = get_connector(req.connector_type, req.config)
+    return await connector.get_schema()
+
+
+@router.post("/mapping/infer")
+async def infer_canonical_mapping(
+    req: SmartMappingRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.data.smart_mapping_service import smart_mapping_service
+    mapping = smart_mapping_service.infer_canonical_mapping(req.columns)
+    fingerprint = smart_mapping_service.compute_fingerprint(req.columns)
+    return {"fingerprint": fingerprint, "mapping": mapping}
+
+
+@router.post("/mapping/save")
+async def save_canonical_mapping(
+    req: SaveMappingRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.data.smart_mapping_service import smart_mapping_service
+    fp = smart_mapping_service.save_custom_mapping(req.columns, req.mapping)
+    return {"status": "saved", "fingerprint": fp}
+
+
+@router.post("/dependency/register")
+async def register_dependency(
+    req: RegisterDependencyRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.data.dependency_graph_service import dependency_graph_service
+    dependency_graph_service.register_dependency(req.report_id, req.source_node, req.target_node)
+    return {"status": "registered", "source": req.source_node, "target": req.target_node}
+
+
+@router.post("/dependency/invalidate")
+async def invalidate_dependency(
+    req: InvalidateDependencyRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from app.services.data.dependency_graph_service import dependency_graph_service
+    stale_nodes = dependency_graph_service.invalidate_source(req.report_id, req.source_node)
+    return {"report_id": req.report_id, "stale_nodes": list(stale_nodes)}
+

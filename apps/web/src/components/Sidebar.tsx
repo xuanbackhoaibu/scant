@@ -24,6 +24,7 @@ const mainNavItems = [
   { name: "Tài liệu (Documents)", href: "/documents", icon: FileText },
   { name: "Thư viện Mẫu (Templates)", href: "/templates", icon: Layers },
   { name: "Dữ liệu (Data)", href: "/data", icon: Database },
+  { name: "Tự động hóa (Automations)", href: "/automations", icon: Sparkles },
   { name: "Nguồn trích dẫn (Sources)", href: "/sources", icon: Search },
   { name: "Deep Research", href: "/research", icon: Globe },
   { name: "Brand Kit", href: "/brand-kit", icon: Palette },
