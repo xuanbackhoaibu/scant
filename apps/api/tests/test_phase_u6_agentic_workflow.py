@@ -13,25 +13,28 @@ TestAsyncSession = async_sessionmaker(bind=test_engine, class_=AsyncSession, exp
 import asyncio
 
 @pytest_asyncio.fixture(scope="function")
-async def db_session():
+async def client():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    async with TestAsyncSession() as session:
-        yield session
-    await asyncio.sleep(0.3)
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
 
-
-@pytest_asyncio.fixture(scope="function")
-async def client(db_session: AsyncSession):
     async def override_get_db():
-        yield db_session
+        async with TestAsyncSession() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
     app.dependency_overrides.clear()
+    await asyncio.sleep(0.4)
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest.mark.asyncio

@@ -144,3 +144,53 @@ async def search_knowledge_base(
     ]
 
     return retrieval_service.search_relevant_chunks(query=query, documents=docs_payload, top_k=top_k)
+
+
+# Phase U21: Signed URL Generation & Secure Download
+
+@router.post("/{file_id}/signed-url")
+async def generate_file_signed_url(
+    file_id: str,
+    expires_in_seconds: int = 3600,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.storage.signed_url_service import signed_url_service
+    f = await file_repo.get(db, file_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="File not found")
+
+    token = signed_url_service.generate_signed_token(
+        storage_key=f.file_path,
+        user_id=current_user.id,
+        expires_in_seconds=expires_in_seconds
+    )
+    return {
+        "file_id": f.id,
+        "filename": f.original_name,
+        "signed_token": token,
+        "download_url": f"/api/v1/files/download/signed/{token}",
+        "expires_in_seconds": expires_in_seconds,
+    }
+
+
+@router.get("/download/signed/{token}")
+async def download_file_by_signed_token(token: str):
+    from fastapi.responses import FileResponse, Response
+    from app.services.storage.signed_url_service import signed_url_service
+    from app.services.storage.storage_provider import storage_provider
+
+    is_valid, storage_key, error = signed_url_service.verify_and_decode_token(token)
+    if not is_valid or not storage_key:
+        raise HTTPException(status_code=403, detail=error or "Invalid or expired signed URL.")
+
+    if not Path(storage_key).exists():
+        raise HTTPException(status_code=404, detail="File not found on storage.")
+
+    filename = Path(storage_key).name
+    return FileResponse(
+        path=storage_key,
+        filename=filename,
+        media_type="application/octet-stream"
+    )
+
