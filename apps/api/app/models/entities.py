@@ -458,7 +458,45 @@ class AIChange(Base):
     before_json = Column(JSON, default=dict, nullable=False)
     after_json = Column(JSON, default=dict, nullable=False)
     status = Column(String(50), default="pending", nullable=False)  # pending, accepted, rejected
-    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
-
     change_set = relationship("AIChangeSet", back_populates="changes")
+
+
+class Automation(Base):
+    __tablename__ = "automations"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    trigger_type = Column(String(50), default="manual", nullable=False)  # manual, schedule, data_refresh
+    cron_expression = Column(String(100), nullable=True)  # e.g. "0 8 * * 1"
+    data_source_id = Column(String(36), nullable=True)
+    template_id = Column(String(36), nullable=True)
+    report_title_pattern = Column(String(255), default="Báo cáo Tự động {date}", nullable=False)
+    export_formats_json = Column(JSON, default=list, nullable=False)  # ["docx", "pdf"]
+    is_active = Column(Boolean, default=True, nullable=False)
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
+
+    project = relationship("Project", backref="automations")
+    runs = relationship("AutomationRun", back_populates="automation", cascade="all, delete-orphan")
+
+
+class AutomationRun(Base):
+    __tablename__ = "automation_runs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    automation_id = Column(String(36), ForeignKey("automations.id", ondelete="CASCADE"), nullable=False)
+    report_id = Column(String(36), nullable=True)
+    status = Column(String(50), default="queued", nullable=False)  # queued, running, completed, failed, cancelled
+    trigger_source = Column(String(50), default="manual", nullable=False)
+    retry_count = Column(Integer, default=0, nullable=False)
+    log_messages_json = Column(JSON, default=list, nullable=False)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+    automation = relationship("Automation", back_populates="runs")
+
 
