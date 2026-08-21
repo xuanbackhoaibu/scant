@@ -16,6 +16,7 @@ from app.api.v1.usage import router as usage_router
 from app.api.v1.billing import router as billing_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.metrics import router as metrics_router
+from app.api.v1.document_intelligence import router as document_intelligence_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -35,5 +36,6 @@ api_router.include_router(usage_router)
 api_router.include_router(billing_router)
 api_router.include_router(admin_router)
 api_router.include_router(metrics_router)
+api_router.include_router(document_intelligence_router)
 
 __all__ = ["api_router"]
