@@ -17,9 +17,14 @@ class Settings(BaseSettings):
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
     
-    # Database (Default: Async SQLite for local dev, PostgreSQL for production)
-    DATABASE_URL: str = "sqlite+aiosqlite:///./storage/ai_report_studio.db"
-    
+    # Storage Paths
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
+    STORAGE_DIR: Path = BASE_DIR / "storage"
+    UPLOAD_DIR: Path = STORAGE_DIR / "uploads"
+    TEMPLATE_DIR: Path = STORAGE_DIR / "templates"
+    EXPORT_DIR: Path = STORAGE_DIR / "exports"
+    REPORTS_DIR: Path = STORAGE_DIR / "reports"
+
     # CORS
     CORS_ORIGINS: List[str] = [
         "http://localhost:3050",
@@ -28,15 +33,11 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8050",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "*",
     ]
-    
-    # Storage Paths
-    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent.parent
-    STORAGE_DIR: Path = BASE_DIR / "storage"
-    UPLOAD_DIR: Path = STORAGE_DIR / "uploads"
-    TEMPLATE_DIR: Path = STORAGE_DIR / "templates"
-    EXPORT_DIR: Path = STORAGE_DIR / "exports"
-    REPORTS_DIR: Path = STORAGE_DIR / "reports"
+
+    # Database (Default: Async SQLite for local dev, PostgreSQL for production)
+    DATABASE_URL: str = f"sqlite+aiosqlite:///{Path(__file__).resolve().parent.parent.parent.parent / 'storage' / 'ai_report_studio.db'}"
     
     # AI Providers Configuration
     GEMINI_API_KEY: str = ""

@@ -141,3 +141,16 @@ async def trace_citation(
     if not cit:
         raise HTTPException(status_code=404, detail="Citation not found")
     return CitationResponse.model_validate(cit)
+
+
+@router.post("/direct-search")
+async def direct_research_search(
+    query: str,
+    max_results: int = 6,
+    current_user: User = Depends(get_current_user),
+):
+    provider = search_engine.get_search_provider()
+    raw = await provider.search(query, max_results=max_results)
+    ranked = source_ranker.rank_sources(raw)
+    return {"query": query, "results": ranked}
+

@@ -92,6 +92,8 @@ export const api = {
 
   // Research
   research: {
+    searchWeb: (query: string, maxResults: number = 6) =>
+      request<any>(`/research/direct-search?query=${encodeURIComponent(query)}&max_results=${maxResults}`, { method: "POST" }),
     search: (projectId: string, query: string, mode: string = "standard") =>
       request<any>(`/research/search?project_id=${projectId}&query=${encodeURIComponent(query)}&mode=${mode}`, { method: "POST" }),
     listSources: (projectId: string) => request<any[]>(`/research/sources/project/${projectId}`),

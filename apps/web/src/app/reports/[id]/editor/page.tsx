@@ -37,6 +37,7 @@ export default function ReportEditorPage() {
   const [sections, setSections] = useState<any[]>([]);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"ai" | "research">("ai");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Autosave & Status
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
@@ -49,6 +50,7 @@ export default function ReportEditorPage() {
 
   // Load Report & Sections
   const loadReport = useCallback(async () => {
+    setLoadError(null);
     try {
       const data = await api.reports.get(reportId);
       setReport(data);
@@ -56,10 +58,10 @@ export default function ReportEditorPage() {
       if (data.sections?.length > 0 && !activeSectionId) {
         setActiveSectionId(data.sections[0].id);
       }
-    } catch {
-      router.push("/projects");
+    } catch (err: any) {
+      setLoadError(err.message || "Không thể tải báo cáo. Vui lòng kiểm tra lại kết nối.");
     }
-  }, [reportId, activeSectionId, router]);
+  }, [reportId, activeSectionId]);
 
   useEffect(() => {
     loadReport();
@@ -116,6 +118,34 @@ export default function ReportEditorPage() {
 
   const totalWords = sections.reduce((acc, s) => acc + (s.word_count || 0), 0);
   const estPages = Math.max(1, Math.ceil(totalWords / 300));
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+        <div className="max-w-md w-full p-6 bg-white rounded-2xl border border-slate-200 shadow-sm text-center space-y-4">
+          <div className="h-12 w-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto">
+            <FileText className="h-6 w-6" />
+          </div>
+          <h2 className="text-sm font-bold text-slate-800">Không thể tải báo cáo</h2>
+          <p className="text-xs text-slate-500">{loadError}</p>
+          <div className="flex gap-2 justify-center pt-2">
+            <button
+              onClick={() => loadReport()}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold"
+            >
+              Thử tải lại
+            </button>
+            <Link
+              href="/projects"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold"
+            >
+              Về danh sách dự án
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!report) {
     return (
