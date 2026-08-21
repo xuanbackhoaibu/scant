@@ -146,6 +146,8 @@ async def get_report(
         raise HTTPException(status_code=404, detail="Report not found")
 
     sections = await section_repo.get_by_report(db, report_id)
+    from app.repositories.source_repo import source_repo
+    sources = await source_repo.get_by_project(db, project.id)
 
     return ReportDetailResponse(
         id=report.id,
@@ -160,7 +162,7 @@ async def get_report(
         updated_at=report.updated_at,
         sections=[ReportSectionResponse.model_validate(s) for s in sections],
         total_words=sum(s.word_count for s in sections),
-        sources_count=len(project.sources) if project.sources else 0,
+        sources_count=len(sources),
         citations_count=0,
     )
 

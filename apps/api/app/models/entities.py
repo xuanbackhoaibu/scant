@@ -407,3 +407,35 @@ class DatasetColumn(Base):
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
 
     dataset = relationship("Dataset", back_populates="columns")
+
+
+class AIChangeSet(Base):
+    __tablename__ = "ai_change_sets"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    report_id = Column(String(36), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(50), default="pending", nullable=False)  # pending, accepted, rejected, partially_accepted
+    summary = Column(String(500), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+
+    changes = relationship("AIChange", back_populates="change_set", cascade="all, delete-orphan")
+
+
+class AIChange(Base):
+    __tablename__ = "ai_changes"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    change_set_id = Column(String(36), ForeignKey("ai_change_sets.id", ondelete="CASCADE"), nullable=False)
+    section_id = Column(String(36), ForeignKey("report_sections.id", ondelete="CASCADE"), nullable=False)
+    change_type = Column(String(50), default="replace", nullable=False)  # insert, replace, rewrite, delete
+    description = Column(String(500), nullable=True)
+    before_text = Column(Text, nullable=True)
+    after_text = Column(Text, nullable=True)
+    before_json = Column(JSON, default=dict, nullable=False)
+    after_json = Column(JSON, default=dict, nullable=False)
+    status = Column(String(50), default="pending", nullable=False)  # pending, accepted, rejected
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+
+    change_set = relationship("AIChangeSet", back_populates="changes")
+

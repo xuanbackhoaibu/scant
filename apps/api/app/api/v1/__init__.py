@@ -9,6 +9,7 @@ from app.api.v1.reports import router as reports_router
 from app.api.v1.research import router as research_router
 from app.api.v1.exports import router as exports_router
 from app.api.v1.data import router as data_router
+from app.api.v1.changesets import router as changesets_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -21,5 +22,6 @@ api_router.include_router(reports_router)
 api_router.include_router(research_router)
 api_router.include_router(exports_router)
 api_router.include_router(data_router)
+api_router.include_router(changesets_router)
 
 __all__ = ["api_router"]
