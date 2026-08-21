@@ -1,5 +1,7 @@
 import { Navbar } from "@/components/Navbar";
 import { Sidebar } from "@/components/Sidebar";
+import { CommandPalette } from "@/components/CommandPalette";
+import { OnboardingModal } from "@/components/OnboardingModal";
 
 export default function DashboardLayout({
   children,
@@ -15,6 +17,8 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+      <CommandPalette />
+      <OnboardingModal />
     </div>
   );
 }
