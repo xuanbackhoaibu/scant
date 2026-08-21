@@ -9,12 +9,13 @@ from app.schemas.ai import (
     AnalyzeIntentRequest, AnalyzeIntentResponse,
     OutlineGenerationRequest, OutlineGenerationResponse,
     SectionDraftRequest, SectionEditRequest, AICompletionResponse,
-    ReportQualityCheckResponse
+    ReportQualityCheckResponse, CopilotMessageRequest, CopilotMessageResponse
 )
 from app.api.deps import get_current_user
 from app.services.editor.outline_service import outline_service
 from app.services.editor.writing_engine import writing_engine
 from app.services.editor.context_summarizer import context_summarizer
+from app.services.ai.copilot_service import copilot_service
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -145,3 +146,34 @@ async def check_report_quality(
 
     quality = writing_engine.check_report_quality(sections=sections, sources_count=len(sources))
     return ReportQualityCheckResponse(**quality)
+
+
+@router.post("/copilot", response_model=CopilotMessageResponse)
+async def chat_copilot(
+    req: CopilotMessageRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    project = await project_repo.get(db, req.project_id)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    section = None
+    if req.section_id:
+        section = await section_repo.get(db, req.section_id)
+
+    docs = await document_repo.get_multi(db, project_id=req.project_id)
+    knowledge_docs = [{"id": d.id, "original_name": d.title, "content_text": d.content_text} for d in docs]
+
+    sources_raw = await source_repo.get_by_project(db, req.project_id)
+    sources_payload = [{"title": s.title, "publisher": s.publisher, "summary": s.summary} for s in sources_raw]
+
+    return await copilot_service.chat(
+        req=req,
+        project_metadata=project.metadata_json or {},
+        knowledge_docs=knowledge_docs,
+        sources=sources_payload,
+        section_title=section.title if section else None,
+        section_text=section.plain_text if section else None,
+    )
+

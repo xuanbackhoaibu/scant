@@ -352,12 +352,15 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    job_type = Column(String(50), nullable=False)  # file_parsing, ocr, research, generation, export
+    project_id = Column(String(36), nullable=True)
+    job_type = Column(String(50), default="generation", nullable=False)  # file_parsing, ocr, research, generation, export
     status = Column(String(50), default="pending", nullable=False)  # pending, running, completed, failed, cancelled
+    status_message = Column(String(500), nullable=True)
+    progress_percent = Column(Integer, default=0, nullable=False)
     payload_json = Column(JSON, default=dict, nullable=False)
     result_json = Column(JSON, default=dict, nullable=False)
+    metadata_json = Column(JSON, default=dict, nullable=False)
     error_message = Column(Text, nullable=True)
-    progress_percent = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
 

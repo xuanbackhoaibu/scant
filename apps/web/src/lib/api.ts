@@ -86,6 +86,7 @@ export const api = {
     generateOutline: (data: any) => request<any>("/ai/generate-outline", { method: "POST", body: JSON.stringify(data) }),
     draftSection: (data: any) => request<any>("/ai/draft-section", { method: "POST", body: JSON.stringify(data) }),
     editSelection: (data: any) => request<any>("/ai/edit-selection", { method: "POST", body: JSON.stringify(data) }),
+    copilot: (data: any) => request<any>("/ai/copilot", { method: "POST", body: JSON.stringify(data) }),
     checkReport: (reportId: string) => request<any>(`/ai/check-report/${reportId}`, { method: "POST" }),
   },
 

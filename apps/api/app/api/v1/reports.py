@@ -1,3 +1,4 @@
+import asyncio
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -181,3 +182,77 @@ async def update_section(
 
     updated = await section_repo.update(db, db_obj=section, obj_in=update_dict)
     return ReportSectionResponse.model_validate(updated)
+
+
+@router.post("/{report_id}/generate-all")
+async def start_agentic_report_generation(
+    report_id: str,
+    instructions: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Starts the 12-step autonomous document generation engine."""
+    report = await report_repo.get(db, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    project = await project_repo.get(db, report.project_id)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    from app.models.entities import Job
+    from app.repositories.base import BaseRepository
+    from app.services.agent.agentic_report_orchestrator import agentic_orchestrator
+
+    job_repo = BaseRepository[Job](Job)
+    job = await job_repo.create(db, obj_in={
+        "project_id": project.id,
+        "job_type": "agentic_report_generation",
+        "status": "running",
+        "progress_percent": 5,
+        "status_message": "Đang khởi tạo Agentic Report Engine...",
+        "payload_json": {"report_id": report.id},
+    })
+
+    # Run workflow
+    asyncio_task = asyncio.create_task(
+        agentic_orchestrator.run_workflow(
+            db=db,
+            job_id=job.id,
+            project_id=project.id,
+            report_id=report.id,
+            instructions=instructions,
+        )
+    )
+
+    return {
+        "job_id": job.id,
+        "status": "running",
+        "message": "Hệ thống Agentic Report Engine đã bắt đầu thực thi tự động.",
+    }
+
+
+@router.get("/jobs/{job_id}")
+async def get_job_status(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.entities import Job
+    from app.repositories.base import BaseRepository
+
+    job_repo = BaseRepository[Job](Job)
+    job = await job_repo.get(db, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "progress_percent": job.progress_percent,
+        "status_message": job.status_message,
+        "metadata": job.metadata_json or {},
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+    }
+
