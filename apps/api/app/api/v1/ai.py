@@ -141,10 +141,16 @@ async def check_report_quality(
     if not project or project.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Project not found")
 
+    from app.services.quality.multi_profile_quality_engine import multi_profile_quality_engine
+
     sections = await section_repo.get_by_report(db, report_id)
     sources = await source_repo.get_by_project(db, project.id)
 
-    quality = writing_engine.check_report_quality(sections=sections, sources_count=len(sources))
+    quality = multi_profile_quality_engine.evaluate(
+        profile=report.report_type or project.type or "business",
+        sections=sections,
+        sources_count=len(sources)
+    )
     return ReportQualityCheckResponse(**quality)
 
 
