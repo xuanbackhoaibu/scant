@@ -40,9 +40,10 @@ class Workspace(Base):
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     slug = Column(String(255), nullable=False)
-    description = Column(Text, nullable=True)
     settings_json = Column(JSON, default=dict, nullable=False)
-    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    brand_kit_json = Column(JSON, default=dict, nullable=False)  # Logo, colors, fonts, default header/footer
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="workspaces")
     projects = relationship("Project", back_populates="workspace", cascade="all, delete-orphan")
@@ -55,12 +56,13 @@ class Project(Base):
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     workspace_id = Column(String(36), ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True)
     name = Column(String(255), nullable=False)
-    type = Column(String(50), default="academic", nullable=False)  # academic, data, template_based, auto
+    type = Column(String(50), default="business_report", nullable=False)  # business_report, data_analysis, research, technical, proposal, financial, custom
     description = Column(Text, nullable=True)
     settings_json = Column(JSON, default=dict, nullable=False)
-    topic_details_json = Column(JSON, default=dict, nullable=False)  # student_name, id, subject, teacher, etc.
-    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
+    metadata_json = Column(JSON, default=dict, nullable=False)  # Universal custom fields: [{key, label, type, value, required}]
+    topic_details_json = Column(JSON, default=dict, nullable=False)  # Backward-compatible legacy alias
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="projects")
     workspace = relationship("Workspace", back_populates="projects")
@@ -115,13 +117,15 @@ class Template(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     name = Column(String(255), nullable=False)
-    category = Column(String(100), default="academic", nullable=False)  # academic, business, research, internship
+    category = Column(String(50), default="business", nullable=False)  # business, technical, financial, research, proposal, custom
     description = Column(Text, nullable=True)
+    thumbnail_url = Column(String(1024), nullable=True)
     is_system = Column(Boolean, default=False, nullable=False)
     is_public = Column(Boolean, default=False, nullable=False)
-    organization = Column(String(255), nullable=True)  # e.g. "Đại học Bách Khoa", "FPT", "Công ty ABC"
-    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
+    organization = Column(String(255), nullable=True)  # Company or Organization Name
+    schema_json = Column(JSON, default=dict, nullable=False)  # Reverse-engineered document schema & dynamic fields
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     user = relationship("User", back_populates="templates")
     versions = relationship("TemplateVersion", back_populates="template", cascade="all, delete-orphan")
@@ -133,11 +137,11 @@ class TemplateVersion(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     template_id = Column(String(36), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False)
     version_number = Column(Integer, default=1, nullable=False)
-    styles_json = Column(JSON, default=dict, nullable=False)  # font, margins, spacing, headings, page numbering
-    placeholders_json = Column(JSON, default=dict, nullable=False)  # {{student_name}}, {{topic}}, etc.
-    raw_file_path = Column(String(500), nullable=True)
-    skeleton_xml = Column(Text, nullable=True)
-    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    file_path = Column(String(1024), nullable=True)
+    styles_json = Column(JSON, default=dict, nullable=False)  # margins, font, spacing, colors
+    placeholders_json = Column(JSON, default=dict, nullable=False)  # detected placeholders
+    schema_json = Column(JSON, default=dict, nullable=False)  # reverse engineered structure
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     template = relationship("Template", back_populates="versions")
     reports = relationship("Report", back_populates="template_version")
@@ -150,17 +154,11 @@ class Report(Base):
     project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     template_version_id = Column(String(36), ForeignKey("template_versions.id", ondelete="SET NULL"), nullable=True)
     title = Column(String(255), nullable=False)
-    report_type = Column(String(50), default="academic", nullable=False)
-    status = Column(String(50), default="drafting", nullable=False)  # outline_planned, drafting, reviewing, completed
+    report_type = Column(String(50), default="business_report", nullable=False)
+    quality_profile = Column(String(50), default="business", nullable=False)  # business, technical, research, financial, data_analysis, custom
+    status = Column(String(50), default="draft", nullable=False)
     revision = Column(Integer, default=1, nullable=False)
-    document_settings_json = Column(JSON, default=lambda: {
-        "paper": "A4",
-        "font_family": "Times New Roman",
-        "font_size": 13,
-        "line_spacing": 1.5,
-        "margins": {"top": 20, "bottom": 20, "left": 30, "right": 20},
-        "citation_style": "IEEE"
-    }, nullable=False)
+    document_settings_json = Column(JSON, default=dict, nullable=False)
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
 

@@ -1,4 +1,4 @@
-# AI REPORT STUDIO VIP PRO 🚀
+# AI REPORT STUDIO 
 
 > **Document Operating System** — Nền tảng tạo và biên tập báo cáo học thuật, đồ án và dữ liệu thông minh cao cấp kết hợp giữa Tiptap Editor A4 Canvas, Research Engine chống Hallucination và bộ xuất bản DOCX chuẩn XML trường học.
 
