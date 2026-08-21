@@ -10,7 +10,7 @@ import {
   Plus,
   ArrowRight,
   BookOpen,
-  School,
+  Building,
   User,
   Layers,
   Search,
@@ -25,7 +25,6 @@ export default function ProjectDetailPage() {
   const router = useRouter();
 
   const [project, setProject] = useState<any>(null);
-  const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -33,8 +32,6 @@ export default function ProjectDetailPage() {
       try {
         const proj = await api.projects.get(projectId);
         setProject(proj);
-        // Load associated reports
-        // If there's an existing report, we can list it
         setLoading(false);
       } catch {
         setLoading(false);
@@ -63,12 +60,13 @@ export default function ProjectDetailPage() {
     );
   }
 
-  const topic = project.topic_details_json || {};
+  const meta = project.metadata_json || {};
+  const customFields: any[] = meta.custom_fields || [];
 
   return (
     <div className="max-w-5xl mx-auto py-6 space-y-6">
       {/* Project Overview Card */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
@@ -82,38 +80,30 @@ export default function ProjectDetailPage() {
 
           <button
             onClick={() => router.push(`/projects/new?type=${project.type}`)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors self-start sm:self-auto"
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto"
           >
             <Plus className="h-4 w-4" />
             <span>Tạo báo cáo mới</span>
           </button>
         </div>
 
-        {/* Metadata Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-100">
-          <div>
-            <span className="text-slate-400 block font-medium">Môn học:</span>
-            <span className="font-semibold text-slate-800">{topic.subject || "Chưa thiết lập"}</span>
+        {/* Dynamic Metadata Grid */}
+        {customFields.length > 0 && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-100">
+            {customFields.map((field, idx) => (
+              <div key={idx}>
+                <span className="text-slate-400 block font-medium">{field.label}:</span>
+                <span className="font-semibold text-slate-800">{field.value || "—"} {field.unit || ""}</span>
+              </div>
+            ))}
           </div>
-          <div>
-            <span className="text-slate-400 block font-medium">Trường:</span>
-            <span className="font-semibold text-slate-800">{topic.university || "Đại học Bách Khoa"}</span>
-          </div>
-          <div>
-            <span className="text-slate-400 block font-medium">Sinh viên:</span>
-            <span className="font-semibold text-slate-800">{topic.student_name || "Nguyễn Văn A"} ({topic.student_id || "20210001"})</span>
-          </div>
-          <div>
-            <span className="text-slate-400 block font-medium">Giảng viên hướng dẫn:</span>
-            <span className="font-semibold text-slate-800">{topic.instructor || "TS. Nguyễn Văn B"}</span>
-          </div>
-        </div>
+        )}
 
         <p className="text-xs text-slate-600 leading-relaxed">{project.description}</p>
       </div>
 
       {/* Files Summary */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
         <h2 className="text-sm font-bold text-slate-900">Tài liệu đã tải lên ({project.files?.length || 0})</h2>
         {project.files && project.files.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

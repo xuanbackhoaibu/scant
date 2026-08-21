@@ -1,60 +1,103 @@
 import json
 from typing import Any, Dict, List, Optional
 from app.services.ai.provider_factory import ai_factory
-from app.schemas.ai import OutlineGenerationRequest, OutlineGenerationResponse
+from app.schemas.ai import (
+    AnalyzeIntentRequest, AnalyzeIntentResponse,
+    OutlineGenerationRequest, OutlineGenerationResponse
+)
 from app.schemas.report import OutlineItem
+from app.services.metadata.metadata_helper import metadata_helper
 
 
 class OutlineService:
-    """Service for generating and structuring academic report outlines."""
+    """Universal Document & Outline Architect Service supporting all business, technical, research and financial profiles."""
 
     @staticmethod
-    async def generate_outline(req: OutlineGenerationRequest) -> OutlineGenerationResponse:
+    async def analyze_intent(req: AnalyzeIntentRequest) -> AnalyzeIntentResponse:
         provider = ai_factory.get_provider()
 
         system_prompt = (
-            "Bạn là một Principal Academic Advisor và Senior Technical Architect. "
-            "Nhiệm vụ của bạn là phân tích yêu cầu đề tài bài tập lớn/đồ án, "
-            "tạo ra Project Understanding, Research Questions, Objectives, Scope, Suggested Methodology, "
-            "và đề xuất Cấu trúc Đề Cương (Outline) phân cấp chi tiết theo chuẩn học thuật các trường Đại học (ĐH Bách Khoa, FPT, KHTN, UIT). "
+            "Bạn là một Principal Enterprise Document Architect & AI Strategy Consultant. "
+            "Nhiệm vụ của bạn là nhận mô tả ý tưởng của người dùng, phân tích sâu sắc mục tiêu, "
+            "tự động suy luận loại tài liệu phù hợp nhất (business_report, data_analysis, research, technical, proposal, financial, market_research, custom), "
+            "đối tượng độc giả mục tiêu (audience), các chủ đề then chốt, yêu cầu dữ liệu và đề xuất các trường metadata tùy biến. "
             "Bắt buộc trả về kết quả dưới định dạng JSON với các khóa: "
-            "project_understanding, objectives (array of strings), scope, suggested_methodology, outline (array of objects)."
+            "suggested_title, suggested_type, objective, target_audience, key_themes (array), "
+            "suggested_custom_fields (array of {key, label, type, required, value}), data_requirements, research_requirements."
         )
 
         user_prompt = f"""
-Hãy phân tích đề tài sau và tạo cấu trúc đề cương chi tiết:
-- Tên đề tài: {req.topic_name}
-- Mô tả đề tài: {req.topic_description or "Chưa có mô tả"}
-- Môn học: {req.subject or "Công nghệ phần mềm / Lập trình nâng cao"}
-- Chuyên ngành: {req.major or "Công nghệ thông tin"}
-- Yêu cầu bổ sung trích từ đề bài: {req.requirements_text or "Không có"}
-- Số chương mục tiêu: {req.target_chapters_count} chương.
+Ý TƯỞNG CỦA NGƯỜI DÙNG:
+"{req.user_prompt}"
 
-Yêu cầu cấu trúc outline trả về:
-1. Mở đầu / Bối cảnh đề tài
-2. Chương 1: Tổng quan đề tài (1.1, 1.2, 1.3, 1.4)
-3. Chương 2: Cơ sở lý thuyết & Công nghệ liên quan (2.1, 2.2, 2.3, 2.4)
-4. Chương 3: Phân tích và Thiết kế hệ thống (3.1 Yêu cầu, 3.2 Use Case, 3.3 Database ERD, 3.4 Kiến trúc)
-5. Chương 4: Hiện thực hóa & Kết quả phát triển (4.1 Module chính, 4.2 Triển khai mã nguồn, 4.3 Giao diện)
-6. Chương 5: Kiểm thử và Đánh giá hệ thống (5.1 Kịch bản test, 5.2 Kết quả kiểm thử)
-7. Chương 6: Kết luận và Hướng phát triển (6.1 Kết quả đạt được, 6.2 Hạn chế & Hướng phát triển)
-8. Tài liệu tham khảo chuẩn IEEE
+DANH MỤC BAN ĐẦU (NẾU CÓ): {req.selected_type or "Tự động phân loại"}
 
-Trả về kết quả JSON hợp lệ 100%.
+Hãy phân tích và trả về JSON cấu trúc theo đúng format yêu cầu.
 """
 
         res = await provider.generate(
             prompt=user_prompt,
             system_prompt=system_prompt,
             response_format="json",
-            temperature=0.4
+            temperature=0.3
         )
 
         raw_text = res.get("text", "{}")
         try:
             data = json.loads(raw_text)
         except Exception:
-            # Fallback if json parsing fails
+            clean = raw_text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(clean)
+
+        suggested_type = data.get("suggested_type", req.selected_type or "business_report")
+        default_fields = [f.model_dump() for f in metadata_helper.get_default_fields_for_type(suggested_type)]
+
+        return AnalyzeIntentResponse(
+            suggested_title=data.get("suggested_title", req.user_prompt[:80]),
+            suggested_type=suggested_type,
+            objective=data.get("objective", "Xây dựng tài liệu báo cáo toàn diện và chuyên nghiệp."),
+            target_audience=data.get("target_audience", "Hội đồng Quản trị, Ban Lãnh đạo & Đối tác"),
+            key_themes=data.get("key_themes", ["Tổng quan bối cảnh", "Phân tích thực trạng", "Đề xuất giải pháp & Lộ trình"]),
+            suggested_custom_fields=data.get("suggested_custom_fields") or default_fields,
+            data_requirements=data.get("data_requirements", "Bảng số liệu thống kê, biểu đồ tài chính hoặc KPI liên quan."),
+            research_requirements=data.get("research_requirements", "Tài liệu kỹ thuật chính thức, tiêu chuẩn ngành hoặc báo cáo thị trường uy tín.")
+        )
+
+    @staticmethod
+    async def generate_outline(req: OutlineGenerationRequest) -> OutlineGenerationResponse:
+        provider = ai_factory.get_provider()
+
+        system_prompt = (
+            "Bạn là một Principal Document Architect & Strategy Consultant. "
+            "Nhiệm vụ của bạn là xây dựng cấu trúc đề cương tài liệu chuyên sâu, chuẩn mực và logic cho mọi loại tài liệu "
+            "(Business Report, Data Analysis, Technical Documentation, Proposal, Financial Report, Market Research). "
+            "Bắt buộc trả về kết quả dưới định dạng JSON với các khóa: "
+            "project_understanding, objectives (array), scope, suggested_methodology, outline (array of objects with title, level, position, children)."
+        )
+
+        user_prompt = f"""
+LOẠI TÀI LIỆU: {req.project_type.upper()}
+TIÊU ĐỀ: {req.topic_name}
+MÔ TẢ CHI TIẾT: {req.topic_description or "Chưa có mô tả chi tiết."}
+ĐỐI TƯỢNG ĐỘC GIẢ: {req.audience or "Ban Lãnh đạo & Các bên liên quan"}
+YÊU CẦU ĐẶC THÙ: {req.requirements_text or "Theo chuẩn mực chuyên nghiệp cao nhất."}
+SỐ LƯỢNG MỤC CHÍNH MỤC TIÊU: {req.target_chapters_count} phần.
+
+Hãy tạo cấu trúc đề cương hoàn chỉnh với các phần chính (Level 1) và tiểu mục con (Level 2).
+Đảm bảo tính bao quát: Tóm tắt điều hành (Executive Summary), Bối cảnh & Thực trạng, Phân tích chuyên sâu / Dữ liệu, Đề xuất chiến lược / Kế hoạch triển khai, Rủi ro & Kết luận.
+"""
+
+        res = await provider.generate(
+            prompt=user_prompt,
+            system_prompt=system_prompt,
+            response_format="json",
+            temperature=0.3
+        )
+
+        raw_text = res.get("text", "{}")
+        try:
+            data = json.loads(raw_text)
+        except Exception:
             clean = raw_text.replace("```json", "").replace("```", "").strip()
             data = json.loads(clean)
 
@@ -86,10 +129,10 @@ Trả về kết quả JSON hợp lệ 100%.
             )
 
         return OutlineGenerationResponse(
-            project_understanding=data.get("project_understanding", "Phân tích đề tài hoàn tất."),
-            objectives=data.get("objectives", ["Nghiên cứu cơ sở lý thuyết", "Xây dựng hệ thống hoàn chỉnh"]),
-            scope=data.get("scope", "Phạm vi chức năng và kiểm thử đề tài."),
-            suggested_methodology=data.get("suggested_methodology", "Nghiên cứu thực nghiệm kết hợp Agile."),
+            project_understanding=data.get("project_understanding", "Phân tích tài liệu hoàn tất."),
+            objectives=data.get("objectives", ["Đánh giá toàn diện bối cảnh", "Cung cấp phân tích dựa trên dữ liệu", "Đề xuất lộ trình hành động"]),
+            scope=data.get("scope", "Phạm vi tài liệu bao quát các khía cạnh phân tích chiến lược và dữ liệu."),
+            suggested_methodology=data.get("suggested_methodology", "Phân tích định lượng kết hợp khung đánh giá tiêu chuẩn."),
             outline=parsed_outline
         )
 

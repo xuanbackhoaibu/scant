@@ -82,6 +82,7 @@ export const api = {
 
   // AI Generation, Drafting & Review
   ai: {
+    analyzeIntent: (data: any) => request<any>("/ai/analyze-intent", { method: "POST", body: JSON.stringify(data) }),
     generateOutline: (data: any) => request<any>("/ai/generate-outline", { method: "POST", body: JSON.stringify(data) }),
     draftSection: (data: any) => request<any>("/ai/draft-section", { method: "POST", body: JSON.stringify(data) }),
     editSelection: (data: any) => request<any>("/ai/edit-selection", { method: "POST", body: JSON.stringify(data) }),

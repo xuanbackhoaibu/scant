@@ -6,6 +6,7 @@ from app.repositories.project_repo import project_repo, document_repo
 from app.repositories.report_repo import report_repo, section_repo
 from app.repositories.source_repo import source_repo
 from app.schemas.ai import (
+    AnalyzeIntentRequest, AnalyzeIntentResponse,
     OutlineGenerationRequest, OutlineGenerationResponse,
     SectionDraftRequest, SectionEditRequest, AICompletionResponse,
     ReportQualityCheckResponse
@@ -16,6 +17,15 @@ from app.services.editor.writing_engine import writing_engine
 from app.services.editor.context_summarizer import context_summarizer
 
 router = APIRouter(prefix="/ai", tags=["ai"])
+
+
+@router.post("/analyze-intent", response_model=AnalyzeIntentResponse)
+async def analyze_intent(
+    req: AnalyzeIntentRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Analyzes free-form user ideas into structured report profiles and metadata fields."""
+    return await outline_service.analyze_intent(req)
 
 
 @router.post("/generate-outline", response_model=OutlineGenerationResponse)
