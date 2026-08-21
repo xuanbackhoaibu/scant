@@ -211,3 +211,33 @@ async def inspect_section_facts(
     )
 
 
+@router.post("/transform-document")
+async def transform_document(
+    report_id: str,
+    target_format: str = "executive_summary",  # executive_summary, presentation_slides, one_page, technical_memo
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Converts a full report into a presentation, executive summary, 1-pager, or technical memo."""
+    report = await report_repo.get(db, report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    project = await project_repo.get(db, report.project_id)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    sections = await section_repo.get_by_report(db, report_id)
+    full_text = "\n\n".join([f"## {s.title}\n{s.plain_text or ''}" for s in sections])
+
+    from app.services.editor.document_transformer import document_transformer
+
+    return await document_transformer.transform(
+        title=report.title,
+        full_text=full_text,
+        target_format=target_format,
+        target_audience=(project.metadata_json or {}).get("audience")
+    )
+
+
+
