@@ -500,3 +500,39 @@ class AutomationRun(Base):
     automation = relationship("Automation", back_populates="runs")
 
 
+class AIUsageEvent(Base):
+    """Tracks granular token consumption and estimated cost per AI Gateway request (Phase U19)."""
+    __tablename__ = "ai_usage_events"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True)
+    project_id = Column(String(36), nullable=True)
+    task_type = Column(String(50), nullable=False)
+    provider = Column(String(50), nullable=False)
+    model = Column(String(100), nullable=False)
+    input_tokens = Column(Integer, default=0, nullable=False)
+    output_tokens = Column(Integer, default=0, nullable=False)
+    cached_tokens = Column(Integer, default=0, nullable=False)
+    total_tokens = Column(Integer, default=0, nullable=False)
+    estimated_cost_usd = Column(Float, default=0.0, nullable=False)
+    latency_ms = Column(Integer, default=0, nullable=False)
+    status = Column(String(50), default="success", nullable=False)  # success, failed, failover
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+
+
+class UserQuota(Base):
+    """Tracks monthly token and cost limits per user (Phase U19)."""
+    __tablename__ = "user_quotas"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    monthly_token_limit = Column(Integer, default=1_000_000, nullable=False)
+    monthly_cost_limit_usd = Column(Float, default=20.0, nullable=False)
+    tokens_used_this_month = Column(Integer, default=0, nullable=False)
+    cost_usd_this_month = Column(Float, default=0.0, nullable=False)
+    reset_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
+
+
+
