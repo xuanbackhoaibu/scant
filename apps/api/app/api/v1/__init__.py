@@ -13,6 +13,7 @@ from app.api.v1.changesets import router as changesets_router
 from app.api.v1.collaboration import router as collaboration_router
 from app.api.v1.automations import router as automations_router
 from app.api.v1.usage import router as usage_router
+from app.api.v1.billing import router as billing_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -29,5 +30,6 @@ api_router.include_router(changesets_router)
 api_router.include_router(collaboration_router)
 api_router.include_router(automations_router)
 api_router.include_router(usage_router)
+api_router.include_router(billing_router)
 
 __all__ = ["api_router"]

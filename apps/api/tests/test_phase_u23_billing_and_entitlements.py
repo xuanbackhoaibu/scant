@@ -1,0 +1,92 @@
+import pytest
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from app.main import app
+from app.core.database import Base, get_db
+from app.services.billing.plan_definitions import get_plan_entitlements
+from app.services.billing.entitlement_service import entitlement_service
+
+TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+test_engine = create_async_engine(TEST_DB_URL, connect_args={"check_same_thread": False})
+TestAsyncSession = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest_asyncio.fixture(scope="function")
+async def client():
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    async def override_get_db():
+        async with TestAsyncSession() as session:
+            try:
+                yield session
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    app.dependency_overrides[get_db] = override_get_db
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+    app.dependency_overrides.clear()
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+
+def test_entitlement_gating():
+    # 1. Free Tier Checks
+    ok_auto, msg_auto = entitlement_service.check_feature_access("free", "automations")
+    assert ok_auto is False
+    assert "yêu cầu gói Pro" in msg_auto
+
+    ok_collab, msg_collab = entitlement_service.check_feature_access("free", "team_collaboration", current_count=2)
+    assert ok_collab is False
+
+    ok_prem, _ = entitlement_service.check_feature_access("free", "premium_models")
+    assert ok_prem is False
+
+    assert entitlement_service.is_export_format_allowed("free", "docx") is True
+    assert entitlement_service.is_export_format_allowed("free", "pdf") is False
+
+    # 2. Pro Tier Checks
+    ok_pro_auto, _ = entitlement_service.check_feature_access("pro", "automations", current_count=1)
+    assert ok_pro_auto is True
+
+    ok_pro_prem, _ = entitlement_service.check_feature_access("pro", "premium_models")
+    assert ok_pro_prem is True
+
+    assert entitlement_service.is_export_format_allowed("pro", "pdf") is True
+
+
+@pytest.mark.asyncio
+async def test_billing_api(client: AsyncClient):
+    reg_res = await client.post("/api/v1/auth/register", json={
+        "email": "billable@company.com",
+        "password": "Password123!",
+        "name": "Billable User"
+    })
+    token = reg_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 1. List Plans
+    plans_res = await client.get("/api/v1/billing/plans")
+    assert plans_res.status_code == 200
+    plans = plans_res.json()
+    assert len(plans) >= 4
+
+    # 2. My Entitlements
+    ent_res = await client.get("/api/v1/billing/my-entitlements", headers=headers)
+    assert ent_res.status_code == 200
+    assert ent_res.json()["plan_tier"] == "free"
+
+    # 3. Create Checkout Session
+    checkout_res = await client.post("/api/v1/billing/checkout", json={
+        "plan_tier": "pro",
+        "success_url": "http://localhost:3050/settings",
+        "cancel_url": "http://localhost:3050/settings"
+    }, headers=headers)
+    assert checkout_res.status_code == 200
+    assert "checkout_url" in checkout_res.json()
