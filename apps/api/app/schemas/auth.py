@@ -18,6 +18,11 @@ class GoogleAuthRequest(BaseModel):
     credential: str  # Google JWT ID Token
 
 
+class GoogleCodeAuthRequest(BaseModel):
+    code: str  # Authorization code from OAuth2 redirect
+    redirect_uri: Optional[str] = None
+
+
 class ProfileUpdateRequest(BaseModel):
     name: Optional[str] = None
     avatar_url: Optional[str] = None

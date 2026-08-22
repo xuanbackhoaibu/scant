@@ -126,3 +126,72 @@ async def test_brand_kit_database_persistence(client: AsyncClient):
     reload_res = await client.get("/api/v1/brand-kit", headers=headers)
     assert reload_res.status_code == 200
     assert reload_res.json()["header_text"] == "ENTERPRISE • QUARTERLY REPORT"
+
+
+@pytest.mark.asyncio
+async def test_google_oauth_first_login_returning_login_and_account_linking(client: AsyncClient, monkeypatch):
+    from app.services.auth.google_auth_service import GoogleUserInfo
+
+    # 1. Simulate Google OAuth First-time Login
+    async def mock_verify_first(id_token: str, expected_client_id=None):
+        return True, GoogleUserInfo(
+            google_sub="google-sub-1001",
+            email="google_user1@gmail.com",
+            email_verified=True,
+            name="Google First User",
+            picture="https://google.com/photo1.jpg"
+        ), None
+
+    monkeypatch.setattr(google_auth_service, "verify_id_token", mock_verify_first)
+
+    # First login -> creates new user + workspace + auth_account
+    login1_res = await client.post("/api/v1/auth/google", json={"credential": "mock-valid-id-token"})
+    assert login1_res.status_code == 200
+    token1 = login1_res.json()["access_token"]
+    user1 = login1_res.json()["user"]
+    assert user1["email"] == "google_user1@gmail.com"
+    assert user1["google_sub"] == "google-sub-1001"
+    assert user1["name"] == "Google First User"
+
+    # 2. Simulate Returning Google User Login with same google_sub
+    login2_res = await client.post("/api/v1/auth/google", json={"credential": "mock-valid-id-token"})
+    assert login2_res.status_code == 200
+    user2 = login2_res.json()["user"]
+    # Same user ID, no duplicate created
+    assert user2["id"] == user1["id"]
+
+    # 3. Simulate Safe Account Linking:
+    # Existing user registered with password
+    reg_res = await client.post("/api/v1/auth/register", json={
+        "email": "existing_dev@company.com",
+        "password": "Password123!",
+        "name": "Dev User"
+    })
+    assert reg_res.status_code == 200
+    existing_user_id = reg_res.json()["user"]["id"]
+
+    # Dev user logs in with Google with matching verified email
+    async def mock_verify_link(id_token: str, expected_client_id=None):
+        return True, GoogleUserInfo(
+            google_sub="google-sub-9999",
+            email="existing_dev@company.com",
+            email_verified=True,
+            name="Dev User (Google)",
+            picture="https://google.com/dev_photo.jpg"
+        ), None
+
+    monkeypatch.setattr(google_auth_service, "verify_id_token", mock_verify_link)
+
+    link_res = await client.post("/api/v1/auth/google", json={"credential": "mock-link-token"})
+    assert link_res.status_code == 200
+    linked_user = link_res.json()["user"]
+    # Safely linked to existing user ID, without duplicate
+    assert linked_user["id"] == existing_user_id
+    assert linked_user["google_sub"] == "google-sub-9999"
+
+    # Verify linked accounts list
+    acc_res = await client.get("/api/v1/auth/accounts", headers={"Authorization": f"Bearer {link_res.json()['access_token']}"})
+    assert acc_res.status_code == 200
+    providers = [a["provider"] for a in acc_res.json()]
+    assert "password" in providers
+    assert "google" in providers

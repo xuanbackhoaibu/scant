@@ -56,6 +56,9 @@ export const api = {
   auth: {
     register: (data: any) => request<any>("/auth/register", { method: "POST", body: JSON.stringify(data) }),
     login: (data: any) => request<any>("/auth/login", { method: "POST", body: JSON.stringify(data) }),
+    google: (data: { credential: string }) => request<any>("/auth/google", { method: "POST", body: JSON.stringify(data) }),
+    googleCode: (data: { code: string; redirect_uri?: string }) =>
+      request<any>("/auth/google/code", { method: "POST", body: JSON.stringify(data) }),
     me: () => request<any>("/auth/me"),
   },
 

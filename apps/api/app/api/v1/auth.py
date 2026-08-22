@@ -11,14 +11,102 @@ from app.repositories.user_repo import user_repo
 from app.repositories.base import BaseRepository
 from app.schemas.auth import (
     UserRegister, UserLogin, UserResponse, TokenResponse,
-    GoogleAuthRequest, ProfileUpdateRequest, ChangePasswordRequest
+    GoogleAuthRequest, GoogleCodeAuthRequest, ProfileUpdateRequest, ChangePasswordRequest
 )
 from app.api.deps import get_current_user
-from app.services.auth.google_auth_service import google_auth_service
+from app.services.auth.google_auth_service import google_auth_service, GoogleUserInfo
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 workspace_repo = BaseRepository[Workspace](Workspace)
 account_repo = BaseRepository[AuthAccount](AuthAccount)
+
+
+async def _process_google_user(user_info: GoogleUserInfo, db: AsyncSession) -> TokenResponse:
+    """Helper that creates, links, or returns existing user for Google auth."""
+    # 1. Search user by google_sub first
+    stmt = select(User).where(User.google_sub == user_info.google_sub)
+    res = await db.execute(stmt)
+    user = res.scalars().first()
+
+    if not user:
+        # 2. Search user by email for safe account linking
+        user = await user_repo.get_by_email(db, user_info.email)
+        if user:
+            # Safe link existing account
+            user.google_sub = user_info.google_sub
+            if user_info.picture and not user.avatar_url:
+                user.avatar_url = user_info.picture
+            await db.commit()
+            await db.refresh(user)
+        else:
+            # Create new user via Google
+            user = await user_repo.create(db, obj_in={
+                "email": user_info.email,
+                "name": user_info.name,
+                "google_sub": user_info.google_sub,
+                "avatar_url": user_info.picture,
+                "password_hash": None,
+                "plan": "pro",
+                "is_active": True,
+                "preferred_locale": "vi",
+                "theme": "system",
+                "document_language": "vi",
+            })
+
+            # Create default personal workspace
+            await workspace_repo.create(db, obj_in={
+                "user_id": user.id,
+                "name": f"{user.name}'s Workspace",
+                "slug": f"workspace-{user.id[:8]}",
+                "settings_json": {},
+                "brand_kit_json": {},
+            })
+
+    # Record or update Google auth account entry
+    stmt_acc = select(AuthAccount).where(
+        AuthAccount.user_id == user.id,
+        AuthAccount.provider == "google"
+    )
+    acc_res = await db.execute(stmt_acc)
+    existing_acc = acc_res.scalars().first()
+    if not existing_acc:
+        await account_repo.create(db, obj_in={
+            "user_id": user.id,
+            "provider": "google",
+            "provider_account_id": user_info.google_sub,
+            "email": user.email,
+        })
+
+    access_token = create_access_token(
+        subject=user.id,
+        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    return TokenResponse(
+        access_token=access_token,
+        token_type="bearer",
+        user=UserResponse.model_validate(user)
+    )
+
+
+@router.post("/google", response_model=TokenResponse)
+async def login_with_google(req: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
+    """Authenticates or signs up user via verified Google ID Token."""
+    is_valid, user_info, err_msg = await google_auth_service.verify_id_token(req.credential)
+    if not is_valid or not user_info:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err_msg or "Google token validation failed")
+
+    return await _process_google_user(user_info, db)
+
+
+@router.post("/google/code", response_model=TokenResponse)
+async def login_with_google_code(req: GoogleCodeAuthRequest, db: AsyncSession = Depends(get_db)):
+    """Exchanges Google OAuth2 authorization code for tokens, then creates or returns session."""
+    is_valid, user_info, err_msg = await google_auth_service.exchange_code(req.code, req.redirect_uri)
+    if not is_valid or not user_info:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err_msg or "Google code exchange failed")
+
+    return await _process_google_user(user_info, db)
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -86,78 +174,6 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User account is inactive"
         )
-
-    access_token = create_access_token(
-        subject=user.id,
-        expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-
-    return TokenResponse(
-        access_token=access_token,
-        token_type="bearer",
-        user=UserResponse.model_validate(user)
-    )
-
-
-@router.post("/google", response_model=TokenResponse)
-async def login_with_google(req: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
-    """Authenticates or signs up user via verified Google ID Token."""
-    is_valid, user_info, err_msg = await google_auth_service.verify_id_token(req.credential)
-    if not is_valid or not user_info:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err_msg or "Google token validation failed")
-
-    # 1. Search user by google_sub first
-    stmt = select(User).where(User.google_sub == user_info.google_sub)
-    res = await db.execute(stmt)
-    user = res.scalars().first()
-
-    if not user:
-        # 2. Search user by email for safe account linking
-        user = await user_repo.get_by_email(db, user_info.email)
-        if user:
-            # Safe link existing account
-            user.google_sub = user_info.google_sub
-            if user_info.picture and not user.avatar_url:
-                user.avatar_url = user_info.picture
-            await db.commit()
-            await db.refresh(user)
-        else:
-            # Create new user via Google
-            user = await user_repo.create(db, obj_in={
-                "email": user_info.email,
-                "name": user_info.name,
-                "google_sub": user_info.google_sub,
-                "avatar_url": user_info.picture,
-                "password_hash": None,
-                "plan": "pro",
-                "is_active": True,
-                "preferred_locale": "vi",
-                "theme": "system",
-                "document_language": "vi",
-            })
-
-            # Create default personal workspace
-            await workspace_repo.create(db, obj_in={
-                "user_id": user.id,
-                "name": f"{user.name}'s Workspace",
-                "slug": f"workspace-{user.id[:8]}",
-                "settings_json": {},
-                "brand_kit_json": {},
-            })
-
-    # Record Google auth account entry if missing
-    stmt_acc = select(AuthAccount).where(
-        AuthAccount.user_id == user.id,
-        AuthAccount.provider == "google"
-    )
-    acc_res = await db.execute(stmt_acc)
-    if not acc_res.scalars().first():
-        await account_repo.create(db, obj_in={
-            "user_id": user.id,
-            "provider": "google",
-            "provider_account_id": user_info.google_sub,
-            "email": user.email,
-        })
 
     access_token = create_access_token(
         subject=user.id,

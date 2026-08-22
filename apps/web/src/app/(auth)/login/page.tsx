@@ -13,16 +13,23 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [googleClientId, setGoogleClientId] = useState<string | null>(null);
 
   const login = useAuthStore((state) => state.login);
   const router = useRouter();
 
   useEffect(() => {
-    // Check if Google Client ID is configured in env
-    const cid = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || null;
-    setGoogleClientId(cid);
-  }, []);
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const urlError = params.get("error");
+      if (urlError) {
+        if (urlError === "google_not_configured") {
+          setError(t("auth.googleNotConfigured"));
+        } else {
+          setError(decodeURIComponent(urlError));
+        }
+      }
+    }
+  }, [t]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,11 +47,7 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    if (!googleClientId) {
-      setError(t("auth.googleNotConfigured"));
-      return;
-    }
-    // Google Identity Services flow
+    window.location.href = "/api/auth/google";
   };
 
   const toggleLanguage = () => {

@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     BRAVE_SEARCH_API_KEY: str = ""
     SERPAPI_API_KEY: str = ""
 
+    # Google OAuth Configuration
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:3050/api/auth/callback/google"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
