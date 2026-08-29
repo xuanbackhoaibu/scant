@@ -20,6 +20,16 @@
 
 ## 🚀 Hướng Dẫn Cài Đặt & Chạy
 
+### 0. Cấu hình biến môi trường
+
+Không commit file `.env.development`, `.env.production`, `.env.staging` hoặc API key thật lên Git.
+
+```bash
+cp .env.example .env.development
+```
+
+Sau đó tự điền key thật vào `.env.development` trên máy local hoặc cấu hình qua secret manager khi deploy.
+
 ### 1. Khởi chạy Backend API
 
 ```bash
@@ -61,4 +71,27 @@ PYTHONPATH=apps/api ./apps/api/venv/bin/pytest apps/api/tests
 # Frontend Typecheck & Build
 npm --prefix apps/web run typecheck
 npm --prefix apps/web run build
+```
+
+### 4. Kiểm tra an toàn trước khi commit/push
+
+Chạy lệnh này trước mỗi lần commit hoặc push:
+
+```bash
+bash scripts/check-secrets.sh
+```
+
+Script sẽ chặn các lỗi phổ biến:
+
+- Commit nhầm `.env.*`.
+- Commit nhầm database, file upload, file export DOCX/HTML hoặc cache.
+- Commit nhầm API key kiểu OpenAI, Gemini, Google OAuth, GitHub token, AWS key.
+
+Quy trình đề xuất:
+
+```bash
+git status --short
+bash scripts/check-secrets.sh
+git add .gitignore .env.example scripts/check-secrets.sh README.md
+git commit -m "chore(security): prevent committing secrets and generated files"
 ```

@@ -14,10 +14,13 @@ dist/
 
 # Environment and secrets
 .env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 
 # Storage and DB files
+*.db
 storage/*.db
 storage/uploads/*
 storage/templates/*
@@ -27,9 +30,21 @@ storage/reports/*
 !storage/templates/.gitkeep
 !storage/exports/.gitkeep
 !storage/reports/.gitkeep
+apps/storage/*.db
+apps/storage/uploads/*
+apps/storage/templates/*
+apps/storage/exports/*
+apps/storage/reports/*
+!apps/storage/uploads/.gitkeep
+!apps/storage/templates/.gitkeep
+!apps/storage/exports/.gitkeep
+!apps/storage/reports/.gitkeep
 
 # Logs and OS
 *.log
 .DS_Store
 .vscode/
 .idea/
+
+# Build metadata
+*.tsbuildinfo
