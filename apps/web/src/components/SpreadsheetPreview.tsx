@@ -131,6 +131,8 @@ interface SpreadsheetPreviewProps {
   scrollToCellAddress?: string | null;
   activeSheetName?: string | null;
   onActiveSheetChange?: (sheetName: string) => void;
+  sheetTabsAction?: React.ReactNode;
+  allSheetsActive?: boolean;
 }
 
 function getColumnLetter(colIndex: number): string {
@@ -158,6 +160,8 @@ export default function SpreadsheetPreview({
   scrollToCellAddress = null,
   activeSheetName = null,
   onActiveSheetChange,
+  sheetTabsAction,
+  allSheetsActive = false,
 }: SpreadsheetPreviewProps) {
   const [activeSheetIndex, setActiveSheetIndex] = useState(workbook?.active_sheet_index ?? 0);
   const [zoom, setZoom] = useState(100);
@@ -814,6 +818,7 @@ export default function SpreadsheetPreview({
           <div className="flex items-center gap-1 overflow-x-auto py-0.5 no-scrollbar max-w-[80%]">
             {normalizedWorkbook.sheets.map((sheet, sIdx) => {
               const isActive = sIdx === activeSheetIndex;
+              const isVisuallyActive = allSheetsActive || isActive;
               return (
                 <button
                   key={`sheet-tab-${sheet.name}-${sIdx}`}
@@ -823,19 +828,20 @@ export default function SpreadsheetPreview({
                     onActiveSheetChange?.(sheet.name);
                   }}
                   className={`flex items-center gap-1.5 whitespace-nowrap rounded-t-md px-3 py-1.5 font-semibold text-xs transition-all ${
-                    isActive
+                    isVisuallyActive
                       ? "border-t-2 border-emerald-600 bg-white text-emerald-800 shadow-sm ring-1 ring-slate-200"
                       : "text-slate-600 hover:bg-slate-200/80 hover:text-slate-800"
                   }`}
                 >
-                  <FileSpreadsheet className={`h-3.5 w-3.5 ${isActive ? "text-emerald-600" : "text-slate-400"}`} />
+                  <FileSpreadsheet className={`h-3.5 w-3.5 ${isVisuallyActive ? "text-emerald-600" : "text-slate-400"}`} />
                   <span>{sheet.name}</span>
-                  <span className={`text-[10px] font-normal ${isActive ? "text-emerald-700/80" : "text-slate-400"}`}>
+                  <span className={`text-[10px] font-normal ${isVisuallyActive ? "text-emerald-700/80" : "text-slate-400"}`}>
                     ({sheet.max_row || sheet.cells.length})
                   </span>
                 </button>
               );
             })}
+            {sheetTabsAction && <div className="ml-1 shrink-0">{sheetTabsAction}</div>}
           </div>
 
           <div className="flex items-center gap-2 text-[11px] text-slate-500 shrink-0 font-medium">

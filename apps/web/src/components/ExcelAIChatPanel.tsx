@@ -76,6 +76,7 @@ interface ExcelAIChatPanelProps {
   fileId?: string;
   dataSourceUrl?: string;
   activeSheetName: string;
+  chatScope?: { type: "sheet" | "workbook"; sheets?: string[] };
   totalRows?: number;
   totalCols?: number;
   selectedRange?: string | null;
@@ -239,6 +240,7 @@ export default function ExcelAIChatPanel({
   fileId,
   dataSourceUrl,
   activeSheetName,
+  chatScope = { type: "sheet" },
   totalRows = 0,
   totalCols = 0,
   selectedRange = null,
@@ -254,14 +256,16 @@ export default function ExcelAIChatPanel({
   onHighlightColorChange,
   locale = "vi",
 }: ExcelAIChatPanelProps) {
+  const isWorkbookScope = chatScope.type === "workbook";
+  const scopeLabel = isWorkbookScope ? (locale === "vi" ? "Toàn bộ workbook" : "Entire workbook") : activeSheetName;
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "initial-ai",
       sender: "ai",
       text:
         locale === "vi"
-          ? `Xin chào! Tôi có thể giúp bạn đọc, giải thích và hỏi đáp về workbook hiện tại. Bạn có thể hỏi tôi về các sheet, dữ liệu trên sheet **${activeSheetName}** hoặc kết quả phân tích.`
-          : `Hello! I can help you read, explain, and answer questions about the current workbook on sheet **${activeSheetName}**.`,
+          ? `Xin chào! Tôi có thể giúp bạn đọc, giải thích và hỏi đáp về workbook hiện tại. Phạm vi chat hiện tại: **${scopeLabel}**.`
+          : `Hello! I can help you read, explain, and answer questions about the current workbook. Current chat scope: **${scopeLabel}**.`,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
@@ -270,7 +274,7 @@ export default function ExcelAIChatPanel({
   const [isApplyingToXlsx, setIsApplyingToXlsx] = useState(false);
   const [downloadSuccessUrl, setDownloadSuccessUrl] = useState<string | null>(null);
 
-  // Sync greeting when activeSheetName changes
+  // Sync greeting when active sheet or workbook scope changes
   useEffect(() => {
     setMessages((prev) => {
       if (prev.length === 1 && prev[0].id === "initial-ai") {
@@ -280,15 +284,15 @@ export default function ExcelAIChatPanel({
             sender: "ai",
             text:
               locale === "vi"
-                ? `Xin chào! Tôi có thể giúp bạn đọc, giải thích và hỏi đáp về workbook hiện tại. Bạn có thể hỏi tôi về các sheet, dữ liệu trên sheet **${activeSheetName}** hoặc kết quả phân tích.`
-                : `Hello! I can help you read, explain, and answer questions about the current workbook on sheet **${activeSheetName}**.`,
+                ? `Xin chào! Tôi có thể giúp bạn đọc, giải thích và hỏi đáp về workbook hiện tại. Phạm vi chat hiện tại: **${scopeLabel}**.`
+                : `Hello! I can help you read, explain, and answer questions about the current workbook. Current chat scope: **${scopeLabel}**.`,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
         ];
       }
       return prev;
     });
-  }, [activeSheetName, locale]);
+  }, [activeSheetName, locale, scopeLabel]);
 
   // Speech Recognition state
   const [isSpeechSupported, setIsSpeechSupported] = useState(false);
@@ -318,8 +322,20 @@ export default function ExcelAIChatPanel({
       prompt: locale === "vi" ? "File này có bao nhiêu sheet?" : "How many sheets are in this workbook?",
     },
     {
-      label: locale === "vi" ? "📊 Sheet này có bao nhiêu dòng?" : "📊 How many rows?",
-      prompt: locale === "vi" ? `Sheet ${activeSheetName} có bao nhiêu dòng dữ liệu?` : `How many rows on sheet ${activeSheetName}?`,
+      label: isWorkbookScope
+        ? locale === "vi"
+          ? "📊 Workbook có bao nhiêu dòng?"
+          : "📊 Workbook rows?"
+        : locale === "vi"
+        ? "📊 Sheet này có bao nhiêu dòng?"
+        : "📊 How many rows?",
+      prompt: isWorkbookScope
+        ? locale === "vi"
+          ? "Toàn bộ workbook có bao nhiêu dòng dữ liệu?"
+          : "How many data rows are in the whole workbook?"
+        : locale === "vi"
+        ? `Sheet ${activeSheetName} có bao nhiêu dòng dữ liệu?`
+        : `How many rows on sheet ${activeSheetName}?`,
     },
     {
       label: locale === "vi" ? "🏆 Ai có giá trị cao nhất?" : "🏆 Highest value?",
@@ -443,18 +459,19 @@ export default function ExcelAIChatPanel({
         formData.append("data_source_url", dataSourceUrl);
       }
       formData.append("sheet_name", activeSheetName);
+      formData.append("scope", JSON.stringify(chatScope));
       formData.append("message", query);
       formData.append("highlight_color", requestedHighlightColor.color);
       const shouldUseSelectedRange = shouldUseSelectedRangeForChat(query, selectedRange);
       if (shouldUseSelectedRange) {
         formData.append("selected_range", selectedRange as string);
       }
-      formData.append("conversation_id", `excel_chat_${activeSheetName}`);
+      formData.append("conversation_id", isWorkbookScope ? "excel_chat_workbook" : `excel_chat_${activeSheetName}`);
 
       const res = await api.data.workbookChat(formData);
 
       // Sync active sheet in workspace if backend resolved a specific sheet (e.g. from user saying "(HN Chính T8)")
-      if (res.context?.sheet && res.context.sheet !== activeSheetName) {
+      if (res.context?.sheet && res.context.sheet !== activeSheetName && res.context.sheet !== "workbook") {
         onSwitchSheet?.(res.context.sheet);
       }
 
@@ -588,11 +605,13 @@ export default function ExcelAIChatPanel({
                 {locale === "vi" ? "✨ AI Copilot" : "✨ AI Copilot"}
               </span>
               <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 ring-1 ring-emerald-200">
-                {activeSheetName}
+                {scopeLabel}
               </span>
             </div>
             <p className="text-[10px] text-slate-400">
-              {locale === "vi" ? "Hỏi đáp tự nhiên về bảng tính" : "Natural language workbook assistant"} · {totalRows.toLocaleString()} {locale === "vi" ? "dòng" : "rows"} · {totalCols} {locale === "vi" ? "cột" : "cols"}
+              {isWorkbookScope
+                ? `${locale === "vi" ? "Hỏi đáp toàn bộ workbook" : "Whole-workbook Q&A"} · ${chatScope.sheets?.length || 0} ${locale === "vi" ? "sheet" : "sheets"}`
+                : `${locale === "vi" ? "Hỏi đáp tự nhiên về bảng tính" : "Natural language workbook assistant"} · ${totalRows.toLocaleString()} ${locale === "vi" ? "dòng" : "rows"} · ${totalCols} ${locale === "vi" ? "cột" : "cols"}`}
             </p>
           </div>
         </div>

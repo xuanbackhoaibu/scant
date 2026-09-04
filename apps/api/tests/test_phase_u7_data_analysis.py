@@ -880,6 +880,24 @@ async def test_api_workbook_chat_intents_and_conversational_flows(client: AsyncC
     assert "Bang_luong" in sheets_json["answer"]
     assert "Tong_hop" in sheets_json["answer"]
 
+    # 3b. Test Workbook Scope from Chat after "read all"
+    res_workbook_scope = await client.post(
+        "/api/v1/data/workbook-chat",
+        files={"file": ("test.xlsx", file_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")},
+        data={
+            "sheet_name": "Bang_luong",
+            "message": "Tìm dữ liệu trùng",
+            "scope": json.dumps({"type": "workbook", "sheets": ["Bang_luong", "Tong_hop"]}),
+        },
+        headers=headers,
+    )
+    assert res_workbook_scope.status_code == 200
+    workbook_scope_json = res_workbook_scope.json()
+    assert workbook_scope_json["ok"] is True
+    assert workbook_scope_json["context"]["sheet"] == "workbook"
+    assert "Bang_luong" in workbook_scope_json["answer"]
+    assert "Tong_hop" in workbook_scope_json["answer"]
+
     # 4. Test Data Query ("Ai có Thực lĩnh cao nhất?")
     res_top = await client.post(
         "/api/v1/data/workbook-chat",

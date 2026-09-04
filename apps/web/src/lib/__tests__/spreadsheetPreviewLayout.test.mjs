@@ -29,6 +29,27 @@ test("spreadsheet viewport scrolls wide sheets without stretching its parent", (
   assert.match(source, /width: `\$\{totalSheetWidth \* zoom \/ 100\}px`/);
 });
 
+test("spreadsheet sheet tabs expose an inline action slot for workbook-level actions", () => {
+  const source = readFileSync(resolve(componentDir, "SpreadsheetPreview.tsx"), "utf8");
+  const workspaceSource = readFileSync(resolve(componentDir, "ExcelAnalysisWorkspace.tsx"), "utf8");
+
+  assert.match(source, /sheetTabsAction\?: React\.ReactNode/);
+  assert.match(source, /\{sheetTabsAction && <div className="ml-1 shrink-0">\{sheetTabsAction\}<\/div>\}/);
+  assert.match(workspaceSource, /sheetTabsAction=\{/);
+  assert.match(workspaceSource, /Đọc toàn bộ/);
+});
+
+test("read-all mode visually activates every sheet tab and its workbook action", () => {
+  const previewSource = readFileSync(resolve(componentDir, "SpreadsheetPreview.tsx"), "utf8");
+  const workspaceSource = readFileSync(resolve(componentDir, "ExcelAnalysisWorkspace.tsx"), "utf8");
+
+  assert.match(previewSource, /allSheetsActive\?: boolean/);
+  assert.match(previewSource, /const isVisuallyActive = allSheetsActive \|\| isActive/);
+  assert.match(previewSource, /isVisuallyActive\s+\?\s+"border-t-2 border-emerald-600 bg-white text-emerald-800 shadow-sm ring-1 ring-slate-200"/);
+  assert.match(workspaceSource, /allSheetsActive=\{chatScopeMode === "workbook"\}/);
+  assert.match(workspaceSource, /chatScopeMode === "workbook"\s+\?\s+"inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-50/);
+});
+
 test("new project data workflow allows preview column to shrink inside the page grid", () => {
   const source = readFileSync(resolve(appDir, "projects/new/page.tsx"), "utf8");
 

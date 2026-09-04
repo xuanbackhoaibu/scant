@@ -189,6 +189,7 @@ async def chat_with_workbook(
     sheet_name: Optional[str] = Form(None),
     message: str = Form(...),
     selected_range: Optional[str] = Form(None),
+    scope: Optional[str] = Form(None),
     conversation_id: Optional[str] = Form(None),
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db),
@@ -216,12 +217,19 @@ async def chat_with_workbook(
         raise HTTPException(status_code=400, detail="Không tìm thấy tệp dữ liệu bảng tính để trò chuyện.")
 
     try:
+        parsed_scope = None
+        if scope:
+            try:
+                parsed_scope = json.loads(scope)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Scope chat không hợp lệ.")
         response = await workbook_chat_service.chat(
             file_path=target_path,
             message=message,
             sheet_name=sheet_name,
             selected_range=selected_range,
             conversation_id=conversation_id,
+            scope=parsed_scope,
         )
         return {"ok": True, **response}
     except Exception as e:

@@ -38,3 +38,14 @@ test("ExcelAnalysisWorkspace maintains isolated floating Ask AI chat button with
   assert.match(source, /locale === "vi" \? "Hỏi AI" : "Ask AI"/);
   assert.match(source, /ExcelAIChatPanel/);
 });
+
+test("workbook read-all mode lets Ask AI chat use workbook scope", () => {
+  const workspaceSource = readFileSync(resolve(componentDir, "ExcelAnalysisWorkspace.tsx"), "utf8");
+  const chatSource = readFileSync(resolve(componentDir, "ExcelAIChatPanel.tsx"), "utf8");
+
+  assert.match(workspaceSource, /const \[chatScopeMode, setChatScopeMode\] = useState<"sheet" \| "workbook">/);
+  assert.match(workspaceSource, /setChatScopeMode\("workbook"\)/);
+  assert.match(workspaceSource, /chatScope=\{\{ type: chatScopeMode, sheets: sheetNames \}\}/);
+  assert.match(chatSource, /chatScope\?: \{ type: "sheet" \| "workbook"; sheets\?: string\[\] \}/);
+  assert.match(chatSource, /formData\.append\("scope", JSON\.stringify\(chatScope\)\)/);
+});

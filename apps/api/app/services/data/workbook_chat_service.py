@@ -1178,6 +1178,7 @@ class WorkbookChatService:
         selected_range: Optional[str] = None,
         conversation_id: Optional[str] = None,
         filters: Optional[List[Any]] = None,
+        scope: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         conv_id = conversation_id or "default_session"
         session = cls.get_session(conv_id)
@@ -1196,6 +1197,17 @@ class WorkbookChatService:
 
         # 2. Intent Classification for Conversational & Metadata Queries
         intent = cls.classify_intent(message)
+        scope_type = (scope or {}).get("type")
+
+        if scope_type in {"workbook", "sheets"} and intent not in {"GREETING", "HELP", "SMALL_TALK", "WORKBOOK_SHEET_COUNT"}:
+            return await cls.analyze_action(
+                file_path=file_path,
+                prompt=message,
+                sheet_name=sheet_name or session.get("last_sheet") or (available_sheets[0] if available_sheets else "Sheet1"),
+                selected_range=None,
+                conversation_id=conversation_id,
+                scope=scope,
+            )
 
         if intent == "GREETING":
             return {

@@ -35,6 +35,12 @@ import {
 import SpreadsheetPreview, { VisualWorkbook, CellHighlightInfo } from "@/components/SpreadsheetPreview";
 import ExcelAIChatPanel from "@/components/ExcelAIChatPanel";
 import { api, resolveApiDownloadUrl } from "@/lib/api";
+import {
+  buildExcelAnalysisSessionKey,
+  createExcelAnalysisSnapshot,
+  parseExcelAnalysisSnapshot,
+} from "@/lib/excelAnalysisSession";
+import { buildSheetDataSignals } from "@/lib/excelSheetSignals";
 
 export interface AnalysisLayer {
   id: string;
@@ -241,21 +247,42 @@ export default function ExcelAnalysisWorkspace({
     }
     return ["Sheet1"];
   }, [visualWorkbook, initialAnalysis, legacyData]);
+  const sessionStorageKey = useMemo(
+    () => buildExcelAnalysisSessionKey({ fileName, fileId, dataSourceUrl }),
+    [dataSourceUrl, fileId, fileName]
+  );
+  const restoredSession = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return parseExcelAnalysisSnapshot(window.localStorage.getItem(sessionStorageKey));
+  }, [sessionStorageKey]);
 
   const [activeSheetName, setActiveSheetName] = useState<string>(
-    preferredSheet || initialAnalysis?.sheet_name || sheetNames[0] || "Sheet1"
+    (restoredSession?.activeSheetName && sheetNames.includes(restoredSession.activeSheetName)
+      ? restoredSession.activeSheetName
+      : null) ||
+      preferredSheet ||
+      initialAnalysis?.sheet_name ||
+      sheetNames[0] ||
+      "Sheet1"
   );
   const [activeTab, setActiveTab] = useState<"overview" | "stats" | "charts" | "quality" | "ai">("overview");
   const [isChatOpen, setIsChatOpen] = useState<boolean>(false);
   const [hasOpenedChat, setHasOpenedChat] = useState<boolean>(false);
   const chatPanelRef = useRef<HTMLDivElement | null>(null);
   const [analysisBySheet, setAnalysisBySheet] = useState<Record<string, SheetAnalysisData>>(() => {
+    if (restoredSession?.analysisBySheet && Object.keys(restoredSession.analysisBySheet).length > 0) {
+      return restoredSession.analysisBySheet as Record<string, SheetAnalysisData>;
+    }
     if (initialAnalysis && initialAnalysis.sheet_name) {
       return { [initialAnalysis.sheet_name]: initialAnalysis };
     }
     return {};
   });
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
+  const [isReadingAllSheets, setIsReadingAllSheets] = useState(false);
+  const [chatScopeMode, setChatScopeMode] = useState<"sheet" | "workbook">(
+    restoredSession?.chatScopeMode === "workbook" ? "workbook" : "sheet"
+  );
   const [isAnalysisPanelOpen, setIsAnalysisPanelOpen] = useState(false);
   const [selectedChartIdx, setSelectedChartIdx] = useState(0);
   const [columnSearch, setColumnSearch] = useState("");
@@ -263,6 +290,9 @@ export default function ExcelAnalysisWorkspace({
 
   // Analysis Layers state per sheet
   const [analysisLayersBySheet, setAnalysisLayersBySheet] = useState<Record<string, AnalysisLayer[]>>(() => {
+    if (restoredSession?.analysisLayersBySheet && Object.keys(restoredSession.analysisLayersBySheet).length > 0) {
+      return restoredSession.analysisLayersBySheet as Record<string, AnalysisLayer[]>;
+    }
     if (initialAnalysisResult && initialAnalysisResult.actions?.length) {
       const sheet = initialAnalysisResult.context?.sheet || initialAnalysis?.sheet_name || "Sheet1";
       const cells = initialAnalysisResult.actions.flatMap((a: any) => a.cells || []);
@@ -290,14 +320,17 @@ export default function ExcelAnalysisWorkspace({
 
   const [selectedRange, setSelectedRange] = useState<string | null>(null);
   const [scrollToCellAddress, setScrollToCellAddress] = useState<string | null>(null);
-  const [analysisPrompt, setAnalysisPrompt] = useState(initialAnalysisPrompt || "");
-  const [activeHighlightColor, setActiveHighlightColor] = useState<string>("#FEF08A");
+  const [analysisPrompt, setAnalysisPrompt] = useState(restoredSession?.analysisPrompt || initialAnalysisPrompt || "");
+  const [activeHighlightColor, setActiveHighlightColor] = useState<string>(restoredSession?.activeHighlightColor || "#FEF08A");
   const [isRunningAnalysisAction, setIsRunningAnalysisAction] = useState(false);
   const [analysisActionStatus, setAnalysisActionStatus] = useState<string | null>(
-    initialAnalysisResult ? (locale === "vi" ? "Đã chạy phân tích ban đầu." : "Initial analysis completed.") : null
+    restoredSession?.analysisActionStatus ||
+      (initialAnalysisResult ? (locale === "vi" ? "Đã chạy phân tích ban đầu." : "Initial analysis completed.") : null)
   );
   const [lastAnalysisResultBySheet, setLastAnalysisResultBySheet] = useState<Record<string, any>>(
-    initialAnalysisResult && initialAnalysisResult.context?.sheet
+    restoredSession?.lastAnalysisResultBySheet && Object.keys(restoredSession.lastAnalysisResultBySheet).length > 0
+      ? restoredSession.lastAnalysisResultBySheet
+      : initialAnalysisResult && initialAnalysisResult.context?.sheet
       ? { [initialAnalysisResult.context.sheet]: initialAnalysisResult }
       : {}
   );
@@ -306,7 +339,11 @@ export default function ExcelAnalysisWorkspace({
     lastAnalysisResultBySheet["workbook"] ||
     null;
   const [analysisHistory, setAnalysisHistory] = useState<any[]>(
-    initialAnalysisResult ? [initialAnalysisResult.analysis_history_item || initialAnalysisResult] : []
+    restoredSession?.analysisHistory?.length
+      ? restoredSession.analysisHistory
+      : initialAnalysisResult
+      ? [initialAnalysisResult.analysis_history_item || initialAnalysisResult]
+      : []
   );
 
   const activeLayers = (analysisLayersBySheet[activeSheetName] || []).filter((l) => l.visible);
@@ -325,6 +362,44 @@ export default function ExcelAnalysisWorkspace({
     });
     return map;
   }, [activeLayers]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hasPersistentAnalysis =
+      analysisHistory.length > 0 ||
+      Object.keys(analysisBySheet).length > 0 ||
+      Object.keys(lastAnalysisResultBySheet).length > 0 ||
+      Object.values(analysisLayersBySheet).some((layers) => layers.length > 0);
+    if (!hasPersistentAnalysis) return;
+    const snapshot = createExcelAnalysisSnapshot({
+      activeSheetName,
+      analysisPrompt,
+      activeHighlightColor,
+      analysisActionStatus,
+      chatScopeMode,
+      analysisHistory,
+      analysisBySheet,
+      analysisLayersBySheet,
+      lastAnalysisResultBySheet,
+    });
+    window.localStorage.setItem(sessionStorageKey, JSON.stringify(snapshot));
+  }, [
+    activeHighlightColor,
+    activeSheetName,
+    analysisActionStatus,
+    analysisBySheet,
+    analysisHistory,
+    analysisLayersBySheet,
+    analysisPrompt,
+    chatScopeMode,
+    lastAnalysisResultBySheet,
+    sessionStorageKey,
+  ]);
+
+  const handleSelectSheet = useCallback((sheetName: string) => {
+    setActiveSheetName(sheetName);
+    setChatScopeMode("sheet");
+  }, []);
 
   const handleToggleLayerVisibility = useCallback((sheetName: string, layerId: string) => {
     setAnalysisLayersBySheet((prev) => {
@@ -730,7 +805,7 @@ export default function ExcelAnalysisWorkspace({
   const fetchSheetAnalysis = useCallback(
     async (sheetName: string, forceRefresh = false) => {
       if (!forceRefresh && analysisBySheet[sheetName]) {
-        return;
+        return analysisBySheet[sheetName];
       }
 
       setIsLoadingAnalysis(true);
@@ -754,15 +829,63 @@ export default function ExcelAnalysisWorkspace({
             ...prev,
             [sheetName]: res.analysis,
           }));
+          return res.analysis as SheetAnalysisData;
         }
+        return null;
       } catch (err) {
         console.error("Failed to analyze sheet:", err);
+        return null;
       } finally {
         setIsLoadingAnalysis(false);
       }
     },
     [file, fileId, dataSourceUrl, analysisBySheet]
   );
+
+  const sheetDataSignals = useMemo(
+    () => buildSheetDataSignals(sheetNames, analysisBySheet, visualWorkbook),
+    [analysisBySheet, sheetNames, visualWorkbook]
+  );
+
+  const handleReadAllSheets = useCallback(async () => {
+    if (isReadingAllSheets || sheetNames.length === 0) return;
+    setIsReadingAllSheets(true);
+    setAnalysisActionStatus(
+      locale === "vi"
+        ? `Đang đọc toàn bộ ${sheetNames.length} sheet...`
+        : `Reading all ${sheetNames.length} sheets...`
+    );
+
+    let readCount = 0;
+    let dataCount = 0;
+    const sheetNamesWithData: string[] = [];
+
+    try {
+      for (const sheetName of sheetNames) {
+        const analysis = await fetchSheetAnalysis(sheetName);
+        if (analysis) {
+          readCount += 1;
+          const populatedCells = Number(analysis.overview?.populated_cells || 0);
+          const totalRows = Number(analysis.overview?.total_rows || 0);
+          const totalColumns = Number(analysis.overview?.total_columns || 0);
+          if (populatedCells > 0 || totalRows > 0 || totalColumns > 0) {
+            dataCount += 1;
+            sheetNamesWithData.push(sheetName);
+          }
+        }
+      }
+      const sheetList = sheetNamesWithData.slice(0, 4).join(", ");
+      const moreCount = Math.max(sheetNamesWithData.length - 4, 0);
+      setChatScopeMode("workbook");
+      setAnalysisActionStatus(
+        locale === "vi"
+          ? `Đã đọc ${readCount}/${sheetNames.length} sheet. Có thông tin trong ${dataCount} sheet${sheetList ? `: ${sheetList}${moreCount ? ` +${moreCount}` : ""}` : "."}`
+          : `Read ${readCount}/${sheetNames.length} sheets. Found data in ${dataCount} sheets${sheetList ? `: ${sheetList}${moreCount ? ` +${moreCount}` : ""}` : "."}`
+      );
+    } finally {
+      setIsReadingAllSheets(false);
+    }
+  }, [fetchSheetAnalysis, isReadingAllSheets, locale, sheetNames]);
 
   // Trigger fetch when active sheet changes
   useEffect(() => {
@@ -850,7 +973,7 @@ export default function ExcelAnalysisWorkspace({
           <div className="relative">
             <select
               value={activeSheetName}
-              onChange={(e) => setActiveSheetName(e.target.value)}
+              onChange={(e) => handleSelectSheet(e.target.value)}
               className="appearance-none rounded-lg border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-xs font-bold text-slate-800 shadow-sm hover:border-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             >
               {sheetNames.map((name: string) => (
@@ -889,7 +1012,7 @@ export default function ExcelAnalysisWorkspace({
           <button
             type="button"
             onClick={() => fetchSheetAnalysis(activeSheetName, true)}
-            disabled={isLoadingAnalysis}
+            disabled={isLoadingAnalysis || isReadingAllSheets}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 disabled:opacity-50 transition"
             title={locale === "vi" ? "Phân tích lại sheet hiện tại" : "Re-analyze active sheet"}
           >
@@ -923,6 +1046,72 @@ export default function ExcelAnalysisWorkspace({
           )}
         </div>
       </div>
+
+      {sheetDataSignals.length > 1 && (
+        <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs no-scrollbar">
+          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            {locale === "vi" ? "Thông tin sheet:" : "Sheet info:"}
+          </span>
+          {sheetDataSignals.map((signal) => {
+            const isActive = signal.name === activeSheetName;
+            const stateText = signal.isRead
+              ? signal.hasData
+                ? locale === "vi"
+                  ? "Đã đọc"
+                  : "Read"
+                : locale === "vi"
+                ? "Trống"
+                : "Empty"
+              : signal.hasData
+              ? locale === "vi"
+                ? "Có dữ liệu"
+                : "Has data"
+              : locale === "vi"
+              ? "Chưa đọc"
+              : "Unread";
+            const dotClass = signal.isRead
+              ? signal.hasData
+                ? "bg-emerald-500"
+                : "bg-slate-300"
+              : signal.hasData
+              ? "bg-amber-400"
+              : "bg-slate-300";
+            return (
+              <button
+                key={signal.name}
+                type="button"
+                onClick={() => handleSelectSheet(signal.name)}
+                className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition ${
+                  isActive
+                    ? "border-emerald-300 bg-white text-emerald-800 shadow-sm"
+                    : "border-slate-200 bg-white/80 text-slate-700 hover:border-emerald-200 hover:bg-white"
+                }`}
+                title={`${signal.name}: ${stateText} · ${signal.totalRows.toLocaleString()} dòng × ${signal.totalColumns.toLocaleString()} cột`}
+              >
+                <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+                <span className="max-w-[140px] truncate">{signal.name}</span>
+                <span className={`hidden rounded px-1.5 py-0.5 text-[10px] font-bold sm:inline ${
+                  signal.isRead && signal.hasData
+                    ? "bg-emerald-50 text-emerald-700"
+                    : signal.hasData
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-slate-100 text-slate-500"
+                }`}>
+                  {stateText}
+                </span>
+                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                  {signal.totalRows.toLocaleString()}×{signal.totalColumns.toLocaleString()}
+                </span>
+                {signal.issueCount > 0 && (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                    {signal.issueCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* 2. Main Body Split Layout (Spreadsheet ~65% | Analysis Panel ~35%) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 min-h-0 h-[clamp(650px,84vh,900px)] overflow-hidden">
@@ -1182,11 +1371,28 @@ export default function ExcelAnalysisWorkspace({
               height="100%"
               locale={locale}
               activeSheetName={activeSheetName}
-              onActiveSheetChange={setActiveSheetName}
+              onActiveSheetChange={handleSelectSheet}
               cellHighlights={cellHighlightsForActiveSheet}
               selectedRange={selectedRange}
               onRangeSelect={setSelectedRange}
               scrollToCellAddress={scrollToCellAddress}
+              allSheetsActive={chatScopeMode === "workbook"}
+              sheetTabsAction={
+                <button
+                  type="button"
+                  onClick={handleReadAllSheets}
+                  disabled={isReadingAllSheets || sheetNames.length === 0}
+                  className={
+                    chatScopeMode === "workbook"
+                      ? "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 shadow-sm transition hover:bg-emerald-100 active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1"
+                      : "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1"
+                  }
+                  title={locale === "vi" ? "Đọc và cập nhật thông tin cho toàn bộ sheet" : "Read and refresh all sheets"}
+                >
+                  {isReadingAllSheets ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-700" /> : <Layers3 className="h-3.5 w-3.5 text-emerald-700" />}
+                  <span>{locale === "vi" ? "Đọc toàn bộ" : "Read all"}</span>
+                </button>
+              }
             />
           </div>
 
@@ -1998,6 +2204,7 @@ export default function ExcelAnalysisWorkspace({
             fileId={fileId}
             dataSourceUrl={dataSourceUrl}
             activeSheetName={activeSheetName}
+            chatScope={{ type: chatScopeMode, sheets: sheetNames }}
             totalRows={currentAnalysis?.overview?.total_rows || 0}
             totalCols={currentAnalysis?.overview?.total_columns || 0}
             selectedRange={selectedRange}
@@ -2005,7 +2212,7 @@ export default function ExcelAnalysisWorkspace({
             onHighlightCells={handleHighlightCells}
             onClearHighlights={handleClearHighlights}
             onScrollToCell={handleScrollToCell}
-            onSwitchSheet={(newSheet) => setActiveSheetName(newSheet)}
+            onSwitchSheet={(newSheet) => handleSelectSheet(newSheet)}
             onClose={() => setIsChatOpen(false)}
             activeHighlightColor={activeHighlightColor}
             onHighlightColorChange={setActiveHighlightColor}
