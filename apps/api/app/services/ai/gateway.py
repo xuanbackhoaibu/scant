@@ -34,6 +34,7 @@ class AIGateway:
                     system_prompt=request.system_prompt,
                     model=route.primary_model,
                     temperature=request.temperature,
+                    max_tokens=request.max_tokens or 4096,
                     response_format=request.response_format,
                 )
                 latency_ms = int((time.time() - start_time) * 1000)
@@ -53,6 +54,7 @@ class AIGateway:
                 system_prompt=request.system_prompt,
                 model=route.fallback_model,
                 temperature=request.temperature,
+                max_tokens=request.max_tokens or 4096,
                 response_format=request.response_format,
             )
             latency_ms = int((time.time() - start_time) * 1000)

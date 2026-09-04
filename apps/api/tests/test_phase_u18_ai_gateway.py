@@ -49,6 +49,28 @@ async def test_ai_gateway_execute_success():
 
 
 @pytest.mark.asyncio
+async def test_ai_gateway_passes_max_tokens_to_provider():
+    metrics_collector.reset()
+    req = AIRequest(
+        task_type=AITaskType.AGENT_REASONING,
+        prompt="Trả lời ngắn",
+        temperature=0.2,
+        max_tokens=123,
+    )
+
+    with patch("app.services.ai.gemini_provider.GeminiProvider.generate", new_callable=AsyncMock) as generate:
+        generate.return_value = {
+            "text": "ok",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1},
+        }
+
+        res = await ai_gateway.execute(req)
+
+    assert res.text == "ok"
+    assert generate.await_args.kwargs["max_tokens"] == 123
+
+
+@pytest.mark.asyncio
 async def test_ai_gateway_failover_mechanism():
     req = AIRequest(
         task_type=AITaskType.FACT_CHECK,
@@ -75,9 +97,9 @@ async def test_outline_service_via_gateway():
 
 
 def test_ai_offline_fallback_is_disabled_in_production():
-    assert Settings(ENVIRONMENT="development").allow_ai_offline_fallback is True
-    assert Settings(ENVIRONMENT="test").allow_ai_offline_fallback is True
-    assert Settings(ENVIRONMENT="production").allow_ai_offline_fallback is False
+    assert Settings(ENVIRONMENT="development", AI_RUNTIME_MODE="auto", _env_file=None).allow_ai_offline_fallback is True
+    assert Settings(ENVIRONMENT="test", AI_RUNTIME_MODE="auto", _env_file=None).allow_ai_offline_fallback is True
+    assert Settings(ENVIRONMENT="production", AI_RUNTIME_MODE="auto", _env_file=None).allow_ai_offline_fallback is False
 
 
 @pytest.mark.asyncio
@@ -88,6 +110,8 @@ async def test_gemini_provider_without_key_fails_in_production(monkeypatch):
         JWT_SECRET="real-production-secret-value-with-more-than-32-characters",
         CORS_ORIGINS=["https://app.example.com"],
         GEMINI_API_KEY="",
+        AI_RUNTIME_MODE="auto",
+        _env_file=None,
     )
     monkeypatch.setattr("app.services.ai.gemini_provider.settings", production_settings)
 
