@@ -33,10 +33,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       setLocaleState(saved);
       document.documentElement.lang = saved;
     } else {
-      // Check navigator language
-      const navLang = navigator.language.startsWith("vi") ? "vi" : "en";
-      setLocaleState(navLang);
-      document.documentElement.lang = navLang;
+      setLocaleState("vi");
+      document.documentElement.lang = "vi";
     }
   }, []);
 
@@ -54,17 +52,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       if (current && typeof current === "object" && k in current) {
         current = current[k];
       } else {
-        // Fallback to English dictionary if key missing in current locale
-        let fallback: any = dictionaries["en"];
-        for (const fk of keys) {
-          if (fallback && typeof fallback === "object" && fk in fallback) {
-            fallback = fallback[fk];
-          } else {
-            return path; // return key as fallback
-          }
-        }
-        current = fallback;
-        break;
+        return path;
       }
     }
 

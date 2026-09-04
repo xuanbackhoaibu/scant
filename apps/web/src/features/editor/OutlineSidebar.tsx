@@ -3,14 +3,9 @@
 import { useState } from "react";
 import {
   BookOpen,
-  ChevronRight,
-  ChevronDown,
   Plus,
-  Trash2,
   CheckCircle2,
-  Clock,
-  FileText,
-  Sparkles,
+  PanelLeftClose,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +27,7 @@ interface OutlineSidebarProps {
   activeSectionId: string | null;
   onSelectSection: (id: string) => void;
   onAddSection?: () => void;
+  onHide?: () => void;
 }
 
 export function OutlineSidebar({
@@ -39,28 +35,54 @@ export function OutlineSidebar({
   activeSectionId,
   onSelectSection,
   onAddSection,
+  onHide,
 }: OutlineSidebarProps) {
+  const draftedCount = sections.filter((sec) => sec.status === "draft" || (sec.word_count && sec.word_count > 40)).length;
+
   return (
-    <aside className="w-72 border-r border-slate-200 bg-white flex flex-col h-[calc(100vh-3.5rem)] sticky top-14">
+    <aside className="hidden w-[280px] shrink-0 flex-col border-r border-slate-200 bg-white lg:flex xl:w-[304px]">
       {/* Header */}
-      <div className="p-3.5 border-b border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BookOpen className="h-4 w-4 text-indigo-600" />
-          <span className="text-xs font-bold text-slate-800">Cấu trúc Báo Cáo</span>
+      <div className="border-b border-slate-100 p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <BookOpen className="h-4 w-4 text-indigo-600" />
+            <span className="truncate text-xs font-bold text-slate-900">Cấu trúc báo cáo</span>
+          </div>
+          <div className="flex items-center gap-1">
+            {onAddSection && (
+              <button
+                onClick={onAddSection}
+                title="Thêm mục"
+                className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            )}
+            {onHide && (
+              <button
+                onClick={onHide}
+                title="Ẩn cấu trúc báo cáo"
+                className="rounded p-1 text-slate-500 transition-colors hover:bg-slate-100 hover:text-indigo-600"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
-        {onAddSection && (
-          <button
-            onClick={onAddSection}
-            title="Thêm mục"
-            className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-indigo-600 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        )}
+        <div className="mt-3 grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] font-semibold text-slate-500">
+          <div>
+            <p className="text-sm font-bold text-slate-900">{sections.length}</p>
+            <p>Tổng mục</p>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-emerald-700">{draftedCount}</p>
+            <p>Đã có nội dung</p>
+          </div>
+        </div>
       </div>
 
       {/* Sections Tree */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 space-y-1 overflow-y-auto p-2">
         {sections.map((sec) => {
           const isActive = activeSectionId === sec.id;
           const isDrafted = sec.status === "draft" || (sec.word_count && sec.word_count > 40);
@@ -70,9 +92,9 @@ export function OutlineSidebar({
               key={sec.id}
               onClick={() => onSelectSection(sec.id)}
               className={cn(
-                "w-full text-left flex items-start gap-2.5 px-3 py-2 rounded-lg text-xs transition-all group",
+                "group flex w-full items-start gap-2.5 rounded-lg px-3 py-2 text-left text-xs transition-all",
                 isActive
-                  ? "bg-indigo-50/90 text-indigo-950 font-bold shadow-xs border border-indigo-200/60"
+                  ? "border border-indigo-200/70 bg-indigo-50/90 font-bold text-indigo-950 shadow-xs"
                   : "text-slate-600 hover:bg-slate-50 hover:text-slate-900",
                 sec.level === 2 && "pl-6 text-[11px]",
                 sec.level === 3 && "pl-9 text-[11px]"
@@ -103,7 +125,7 @@ export function OutlineSidebar({
       </div>
 
       {/* Footer Info */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/60 text-[11px] text-slate-500 flex items-center justify-between">
+      <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/60 p-3 text-[11px] text-slate-500">
         <span>Tổng số mục:</span>
         <span className="font-bold text-slate-700">{sections.length} phần</span>
       </div>

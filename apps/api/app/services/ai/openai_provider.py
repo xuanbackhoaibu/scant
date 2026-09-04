@@ -24,6 +24,8 @@ class OpenAIProvider(AIProvider):
         target_model = model or self.default_model
 
         if not self.api_key:
+            if not settings.allow_ai_offline_fallback:
+                raise RuntimeError("OPENAI_API_KEY is required when AI offline fallback is disabled.")
             from app.services.ai.gemini_provider import GeminiProvider
             return GeminiProvider()._mock_academic_fallback(prompt, response_format)
 

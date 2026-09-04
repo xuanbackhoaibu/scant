@@ -1,4 +1,5 @@
 import os
+import base64
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -125,3 +126,92 @@ async def test_full_phase1d_editor_and_export_flow(client: AsyncClient):
     }, headers=headers)
     assert pdf_res.status_code == 200
     assert pdf_res.json()["file_size"] > 0
+
+
+@pytest.mark.asyncio
+async def test_preview_html_loads_for_plain_report(client: AsyncClient):
+    reg_res = await client.post("/api/v1/auth/register", json={
+        "email": "preview_user@test.com",
+        "password": "Password123!",
+        "name": "Preview User"
+    })
+    token = reg_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    proj_res = await client.post("/api/v1/projects", json={
+        "name": "Preview Regression",
+        "type": "academic",
+    }, headers=headers)
+    project_id = proj_res.json()["id"]
+
+    report_res = await client.post("/api/v1/reports", json={
+        "project_id": project_id,
+        "title": "Báo cáo kiểm tra preview",
+        "report_type": "academic",
+        "outline": [
+            {"title": "CHƯƠNG 1: KIỂM TRA", "level": 1, "position": 1, "children": []}
+        ]
+    }, headers=headers)
+    report_data = report_res.json()
+    report_id = report_data["id"]
+    section_id = report_data["sections"][0]["id"]
+
+    await client.put(f"/api/v1/reports/sections/{section_id}", json={
+        "plain_text": "Đây là nội dung kiểm tra bản xem theo mẫu.",
+        "content_json": {
+            "type": "doc",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "Đây là nội dung kiểm tra bản xem theo mẫu."}]}
+            ],
+        },
+        "word_count": 8,
+        "status": "draft",
+    }, headers=headers)
+
+    preview_res = await client.get(f"/api/v1/exports/report/{report_id}/preview-html", headers=headers)
+    assert preview_res.status_code == 200
+    assert "html_document" in preview_res.json()
+
+
+@pytest.mark.asyncio
+async def test_report_thumbnail_uses_real_report_content(client: AsyncClient):
+    reg_res = await client.post("/api/v1/auth/register", json={
+        "email": "thumbnail_user@test.com",
+        "password": "Password123!",
+        "name": "Thumbnail User"
+    })
+    token = reg_res.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    proj_res = await client.post("/api/v1/projects", json={
+        "name": "Thumbnail Project",
+        "type": "business_report",
+    }, headers=headers)
+    project_id = proj_res.json()["id"]
+
+    report_res = await client.post("/api/v1/reports", json={
+        "project_id": project_id,
+        "title": "Báo cáo thumbnail thật",
+        "report_type": "business_report",
+        "outline": [
+            {"title": "Tóm tắt điều hành", "level": 1, "position": 1, "children": []}
+        ]
+    }, headers=headers)
+    report_data = report_res.json()
+    report_id = report_data["id"]
+    section_id = report_data["sections"][0]["id"]
+
+    await client.put(f"/api/v1/reports/sections/{section_id}", json={
+        "plain_text": "Doanh thu tháng 8 tăng nhờ nhóm khách hàng doanh nghiệp.",
+        "word_count": 9,
+        "status": "draft",
+    }, headers=headers)
+
+    thumb_res = await client.get(f"/api/v1/reports/{report_id}/thumbnail", headers=headers)
+    assert thumb_res.status_code == 200
+    payload = thumb_res.json()
+    assert payload["mime_type"] == "image/svg+xml"
+    assert payload["image_data_url"].startswith("data:image/svg+xml;base64,")
+    decoded = base64.b64decode(payload["image_data_url"].split(",", 1)[1]).decode("utf-8")
+    assert "Báo cáo thumbnail thật" in decoded
+    assert "Doanh thu tháng 8 tăng" in decoded

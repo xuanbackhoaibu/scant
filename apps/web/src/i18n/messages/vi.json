@@ -27,7 +27,11 @@
     "status": "Trạng thái",
     "actions": "Thao tác",
     "noData": "Không có dữ liệu",
-    "errorOccurred": "Đã xảy ra lỗi, vui lòng thử lại"
+    "errorOccurred": "Đã xảy ra lỗi, vui lòng thử lại",
+    "switchToEnglish": "Chuyển sang tiếng Anh",
+    "switchToVietnamese": "Chuyển sang tiếng Việt",
+    "expand": "Mở rộng",
+    "collapse": "Thu gọn"
   },
   "navigation": {
     "workspace": "Không gian làm việc",
@@ -47,12 +51,55 @@
     "profile": "Hồ sơ cá nhân",
     "logout": "Đăng xuất"
   },
+  "commandPalette": {
+    "searchPlaceholder": "Tìm kiếm lệnh, tác vụ hoặc tài liệu...",
+    "noResults": "Không tìm thấy lệnh hoặc chức năng phù hợp.",
+    "select": "Chọn",
+    "keyboardHint": "Dùng phím ↑ ↓ để di chuyển",
+    "categories": {
+      "ai": "Tác vụ AI",
+      "documents": "Tài liệu",
+      "templates": "Mẫu",
+      "data": "Không gian dữ liệu",
+      "automations": "Tự động hóa",
+      "admin": "Quản trị",
+      "settings": "Cài đặt"
+    },
+    "commands": {
+      "autoCreate": "Tạo báo cáo tự động",
+      "newDocument": "Tạo tài liệu mới",
+      "templates": "Thư viện mẫu báo cáo",
+      "dataConnectors": "Kết nối dữ liệu",
+      "automations": "Tự động hóa và lập lịch báo cáo",
+      "admin": "Bảng điều khiển quản trị",
+      "settings": "Cài đặt không gian làm việc và bộ nhận diện"
+    }
+  },
+  "admin": {
+    "title": "Bảng điều khiển quản trị",
+    "subtitle": "Giám sát hạ tầng AI, vận hành người dùng và tối ưu chi phí SaaS",
+    "systemStable": "Hệ thống ổn định 100%",
+    "totalUsers": "Tổng người dùng",
+    "activeUsers": "đang hoạt động",
+    "totalAiRequests": "Tổng yêu cầu AI",
+    "avgLatency": "độ trễ trung bình",
+    "monthlyAiCost": "Chi phí AI tháng",
+    "storageUsed": "Dung lượng lưu trữ",
+    "documents": "tài liệu",
+    "userGovernance": "Quản lý người dùng và gói dịch vụ",
+    "user": "Người dùng",
+    "currentPlan": "Gói hiện tại",
+    "status": "Trạng thái",
+    "active": "Hoạt động",
+    "suspended": "Tạm khóa"
+  },
   "auth": {
     "welcomeBack": "Chào mừng trở lại",
     "loginSubtitle": "Đăng nhập để tiếp tục làm việc với tài liệu của bạn",
     "createAccount": "Tạo tài khoản mới",
     "registerSubtitle": "Bắt đầu trải nghiệm nền tảng tự động hóa văn kiện chuyên nghiệp",
     "continueWithGoogle": "Tiếp tục với Google",
+    "useDemoAccount": "Vào bằng tài khoản demo",
     "orWithEmail": "hoặc đăng nhập bằng email",
     "nameLabel": "Họ và tên",
     "namePlaceholder": "Nguyễn Văn A",
@@ -70,7 +117,12 @@
     "dontHaveAccount": "Chưa có tài khoản?",
     "googleNotConfigured": "Đăng nhập Google hiện chưa được cấu hình Client ID",
     "loginFailed": "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.",
-    "registerFailed": "Đăng ký thất bại. Vui lòng kiểm tra lại thông tin."
+    "registerFailed": "Đăng ký thất bại. Vui lòng kiểm tra lại thông tin.",
+    "callbackFailedTitle": "Xác thực không thành công",
+    "callbackRedirecting": "Đang chuyển hướng về trang đăng nhập...",
+    "callbackCompleting": "Đang hoàn tất đăng nhập...",
+    "callbackSyncing": "Hệ thống đang đồng bộ tài khoản Google và không gian làm việc của bạn.",
+    "sessionRestoreFailed": "Không thể khôi phục phiên đăng nhập"
   },
   "dashboard": {
     "heroQuestion": "Bạn muốn tạo tài liệu gì hôm nay?",
@@ -128,11 +180,39 @@
     "aiProvider": "Nhà cung cấp AI mặc định",
     "aiModel": "Mô hình AI",
     "changePassword": "Đổi mật khẩu",
+    "changingPassword": "Đang xử lý...",
     "currentPassword": "Mật khẩu hiện tại",
     "newPassword": "Mật khẩu mới",
     "linkedAccounts": "Tài khoản liên kết",
     "googleLinked": "Đã liên kết với Google",
-    "googleNotLinked": "Chưa liên kết với Google"
+    "googleNotLinked": "Chưa liên kết với Google",
+    "billingTitle": "Gói dịch vụ của bạn",
+    "billingCurrentPlan": "Hiện tại bạn đang sử dụng gói:",
+    "planBadge": "Gói",
+    "mostPopular": "Phổ biến nhất",
+    "businessPlan": "Doanh nghiệp",
+    "perMonth": "/tháng",
+    "proPlanName": "Gói Chuyên Nghiệp",
+    "proPlanDesc": "Dành cho sinh viên, nghiên cứu sinh và chuyên viên phân tích tài liệu.",
+    "proFeatureTokens": "5.000.000 Tokens Gemini 2.5 Flash",
+    "proFeatureExport": "Xuất file DOCX & PDF chuẩn A4 không giới hạn",
+    "proFeatureDoi": "Tra cứu DOI & ArXiv thông minh",
+    "proFeatureHumanize": "Làm tự nhiên văn phong và kiểm tra dấu hiệu văn bản AI",
+    "upgradeVietQR": "Nâng cấp qua VietQR",
+    "enterprisePlanName": "Gói Doanh Nghiệp",
+    "enterprisePlanDesc": "Dành cho viện nghiên cứu, doanh nghiệp và các tổ chức cần xử lý hàng loạt.",
+    "enterpriseFeatureTokens": "50.000.000 Tokens Gemini tốc độ cao",
+    "enterpriseFeatureBulk": "Sinh báo cáo hàng loạt",
+    "enterpriseFeatureDiagram": "Vẽ sơ đồ Mermaid và công thức LaTeX KaTeX",
+    "enterpriseFeatureVoice": "Bóc băng ghi âm cuộc họp thành báo cáo",
+    "upgradeEnterpriseVietQR": "Nâng cấp gói Doanh Nghiệp qua VietQR",
+    "paymentUpgradeSuccess": "Nâng cấp gói thành công!",
+    "vietnameseInterface": "Giao diện tiếng Việt",
+    "englishInterface": "Giao diện tiếng Anh",
+    "docLangVi": "Tiếng Việt",
+    "docLangEn": "Tiếng Anh",
+    "docLangAuto": "Tự động nhận diện",
+    "recommended": "Khuyên dùng"
   },
   "brandKit": {
     "title": "Bộ Nhận Diện Thương Hiệu (Brand Kit)",
@@ -147,11 +227,59 @@
     "brandKitSaved": "Đã lưu cài đặt Brand Kit thành công"
   },
   "templates": {
-    "title": "Thư viện Mẫu Báo cáo",
-    "subtitle": "Các mẫu tài liệu chuẩn mực giúp tăng tốc độ soạn thảo",
+    "title": "Thư viện Mẫu",
+    "subtitle": "Kho mẫu báo cáo chuẩn quốc tế, tài liệu kỹ thuật và mẫu doanh nghiệp",
     "uploadDocx": "Tải lên Mẫu DOCX",
+    "emptyTitle": "Chưa có mẫu thật",
     "emptyTemplates": "Chưa có mẫu tài liệu nào. Bạn có thể tải lên tệp DOCX mẫu để AI phân tích cấu trúc.",
-    "useTemplate": "Sử dụng mẫu này"
+    "noDescription": "Mẫu này chưa có mô tả.",
+    "useTemplate": "Sử dụng mẫu",
+    "preview": "Xem trước",
+    "realSource": "Nguồn thật",
+    "previewStructure": "Cấu trúc xem trước",
+    "sourceInfo": "Thông tin nguồn",
+    "provider": "Nhà cung cấp",
+    "rating": "Đánh giá",
+    "openOriginal": "Mở mẫu gốc",
+    "noPreview": "Chưa có cấu trúc xem trước",
+    "searchPlaceholder": "Tìm mẫu báo cáo...",
+    "usageCount": "{count} lượt sử dụng",
+    "scopes": {
+      "public": "Kho mẫu công khai",
+      "workspace": "Không gian làm việc",
+      "my": "Mẫu của tôi"
+    },
+    "categories": {
+      "all": "Tất cả",
+      "business": "Kinh doanh",
+      "financial": "Tài chính",
+      "technical": "Kỹ thuật",
+      "academic": "Học thuật",
+      "research": "Nghiên cứu",
+      "data": "Dữ liệu",
+      "proposal": "Đề xuất",
+      "marketing": "Tiếp thị",
+      "operations": "Vận hành",
+      "custom": "Tùy chỉnh"
+    },
+    "samples": {
+      "business": {
+        "name": "Báo cáo Kinh doanh Điều hành",
+        "desc": "Báo cáo chiến lược doanh nghiệp, kế hoạch phát triển thị trường và phân bổ nguồn lực."
+      },
+      "technical": {
+        "name": "Sách trắng Kiến trúc Kỹ thuật",
+        "desc": "Mẫu tài liệu kiến trúc phần mềm, đặc tả API và thiết kế hạ tầng đám mây."
+      },
+      "financial": {
+        "name": "Kiểm toán Tài chính và Đánh giá KPI",
+        "desc": "Báo cáo tài chính chi tiết với bảng đối soát doanh thu, chi phí, EBITDA và dòng tiền."
+      },
+      "marketing": {
+        "name": "Nghiên cứu Thị trường Toàn diện",
+        "desc": "Khảo sát quy mô thị trường, phân tích đối thủ cạnh tranh và chân dung khách hàng mục tiêu."
+      }
+    }
   },
   "errors": {
     "REPORT_NOT_FOUND": "Không tìm thấy báo cáo được yêu cầu.",

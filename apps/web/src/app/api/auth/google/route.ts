@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3050/api/auth/callback/google";
+  const from = request.nextUrl.searchParams.get("from");
 
   if (!clientId) {
     const loginUrl = new URL("/login", request.url);
@@ -16,10 +17,12 @@ export async function GET(request: NextRequest) {
   const googleAuthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   googleAuthUrl.searchParams.set("client_id", clientId);
   googleAuthUrl.searchParams.set("redirect_uri", redirectUri);
-  googleAuthUrl.searchParams.set("response_type", "code");
-  googleAuthUrl.searchParams.set("scope", "openid email profile");
+  googleAuthUrl.searchParams.set(
+    "scope",
+    "openid email profile https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file"
+  );
   googleAuthUrl.searchParams.set("access_type", "offline");
-  googleAuthUrl.searchParams.set("prompt", "select_account");
+  googleAuthUrl.searchParams.set("prompt", "consent select_account");
   googleAuthUrl.searchParams.set("state", state);
 
   const response = NextResponse.redirect(googleAuthUrl);
@@ -30,6 +33,15 @@ export async function GET(request: NextRequest) {
     path: "/",
     maxAge: 600, // 10 minutes
   });
+  if (from && from.startsWith("/")) {
+    response.cookies.set("oauth_from", from, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 600,
+    });
+  }
 
   return response;
 }

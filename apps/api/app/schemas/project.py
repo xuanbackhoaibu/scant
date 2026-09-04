@@ -68,6 +68,9 @@ class FileSummary(BaseModel):
     original_name: str
     file_type: str
     file_size: int
+    is_parsed: bool = False
+    file_hash: Optional[str] = None
+    metadata_json: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 

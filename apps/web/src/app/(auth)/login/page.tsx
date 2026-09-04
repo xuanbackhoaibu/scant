@@ -3,15 +3,17 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FileText, ArrowRight, Lock, Mail, AlertCircle, Languages } from "lucide-react";
+import { FileText, ArrowRight, Lock, Mail, AlertCircle, Languages, UserRoundCheck } from "lucide-react";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useTranslation, Locale } from "@/i18n/I18nContext";
+import { getDemoLoginPayload } from "@/lib/demoAuth";
 
 export default function LoginPage() {
   const { t, locale, setLocale } = useTranslation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fromPath, setFromPath] = useState("/");
   const [loading, setLoading] = useState(false);
 
   const login = useAuthStore((state) => state.login);
@@ -21,6 +23,10 @@ export default function LoginPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const urlError = params.get("error");
+      const from = params.get("from");
+      if (from && from.startsWith("/")) {
+        setFromPath(from);
+      }
       if (urlError) {
         if (urlError === "google_not_configured") {
           setError(t("auth.googleNotConfigured"));
@@ -38,7 +44,7 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      router.push("/");
+      router.push(fromPath);
     } catch (err: any) {
       setError(err.message || t("auth.loginFailed"));
     } finally {
@@ -47,7 +53,24 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "/api/auth/google";
+    window.location.href = `/api/auth/google?from=${encodeURIComponent(fromPath)}`;
+  };
+
+  const handleDemoLogin = async () => {
+    const demo = getDemoLoginPayload();
+    setEmail(demo.email);
+    setPassword(demo.password);
+    setError(null);
+    setLoading(true);
+
+    try {
+      await login(demo.email, demo.password);
+      router.push(fromPath);
+    } catch (err: any) {
+      setError(err.message || t("auth.loginFailed"));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const toggleLanguage = () => {
@@ -61,6 +84,7 @@ export default function LoginPage() {
       <div className="absolute top-4 right-4">
         <button
           onClick={toggleLanguage}
+          title={locale === "vi" ? t("common.switchToEnglish") : t("common.switchToVietnamese")}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:text-indigo-600 rounded-lg shadow-2xs transition-colors"
         >
           <Languages className="h-3.5 w-3.5" />
@@ -90,6 +114,7 @@ export default function LoginPage() {
           <button
             type="button"
             onClick={handleGoogleLogin}
+            disabled={loading}
             className="w-full h-10 px-4 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 shadow-2xs flex items-center justify-center gap-3 transition-colors"
           >
             <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
@@ -111,6 +136,16 @@ export default function LoginPage() {
               />
             </svg>
             <span>{t("auth.continueWithGoogle")}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDemoLogin}
+            disabled={loading}
+            className="mt-2 w-full h-10 px-4 bg-slate-900 hover:bg-slate-800 border border-slate-900 rounded-xl text-xs font-semibold text-white shadow-2xs flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+          >
+            <UserRoundCheck className="h-4 w-4 shrink-0" />
+            <span>{loading ? t("auth.signingIn") : t("auth.useDemoAccount")}</span>
           </button>
 
           <div className="relative my-4">
@@ -169,7 +204,7 @@ export default function LoginPage() {
 
         <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-100">
           {t("auth.dontHaveAccount")}{" "}
-          <Link href="/register" className="font-bold text-indigo-600 hover:text-indigo-700">
+          <Link href={`/register?from=${encodeURIComponent(fromPath)}`} className="font-bold text-indigo-600 hover:text-indigo-700">
             {t("auth.createAccount")}
           </Link>
         </div>

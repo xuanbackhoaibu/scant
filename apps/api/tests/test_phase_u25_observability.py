@@ -64,8 +64,10 @@ def test_structured_logging():
 
 
 def test_metrics_telemetry():
+    metrics_collector.reset()
     metrics_collector.record_http_request(30)
     metrics_collector.record_http_request(85)
+    metrics_collector.record_http_request(120, status_code=500)
     metrics_collector.record_ai_request(240, success=True)
     metrics_collector.record_export(380)
 
@@ -73,12 +75,18 @@ def test_metrics_telemetry():
     assert "api_latency_p50_ms" in summary
     assert "ai_latency_p50_ms" in summary
     assert "ai_failure_rate_pct" in summary
+    assert summary["http_total_requests"] == 3
+    assert summary["http_error_count"] == 1
+    assert summary["http_error_rate_pct"] == 33.33
 
 
 @pytest.mark.asyncio
 async def test_metrics_api(client: AsyncClient):
+    metrics_collector.reset()
+    await client.get("/api/v1/health")
     res = await client.get("/api/v1/metrics")
     assert res.status_code == 200
     data = res.json()
     assert "api_latency_p50_ms" in data
     assert "database_latency_ms" in data
+    assert data["http_total_requests"] >= 1

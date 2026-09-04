@@ -26,6 +26,48 @@ class CreateAutomationRequest(BaseModel):
     export_formats: Optional[List[str]] = None
 
 
+async def _ensure_automation_owner(db: AsyncSession, automation_id: str, current_user: User) -> Automation:
+    auto = await auto_repo.get(db, automation_id)
+    if not auto:
+        raise HTTPException(status_code=404, detail="Automation not found")
+    project = await project_repo.get(db, auto.project_id)
+    if not project or project.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Automation not found")
+    return auto
+
+
+@router.get("")
+async def list_automations(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
+        select(Automation)
+        .join(Project, Automation.project_id == Project.id)
+        .where(Project.user_id == current_user.id)
+        .order_by(Automation.created_at.desc())
+    )
+    res = await db.execute(stmt)
+    autos = res.scalars().all()
+    return [
+        {
+            "id": a.id,
+            "project_id": a.project_id,
+            "name": a.name,
+            "trigger_type": a.trigger_type,
+            "cron_expression": a.cron_expression,
+            "data_source_id": a.data_source_id,
+            "template_id": a.template_id,
+            "report_title_pattern": a.report_title_pattern,
+            "export_formats": a.export_formats_json or [],
+            "is_active": a.is_active,
+            "last_run_at": a.last_run_at,
+            "created_at": a.created_at,
+        }
+        for a in autos
+    ]
+
+
 @router.post("")
 async def create_automation(
     req: CreateAutomationRequest,
@@ -87,6 +129,7 @@ async def trigger_automation(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_automation_owner(db, automation_id, current_user)
     return await automation_engine.execute_run(db, automation_id, trigger_source="manual")
 
 
@@ -96,6 +139,7 @@ async def list_automation_runs(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_automation_owner(db, automation_id, current_user)
     stmt = select(AutomationRun).where(AutomationRun.automation_id == automation_id).order_by(AutomationRun.started_at.desc())
     res = await db.execute(stmt)
     runs = res.scalars().all()
@@ -121,4 +165,8 @@ async def retry_automation_run(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    run = await run_repo.get(db, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    await _ensure_automation_owner(db, run.automation_id, current_user)
     return await automation_engine.retry_run(db, run_id)

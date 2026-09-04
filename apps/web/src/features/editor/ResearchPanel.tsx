@@ -12,6 +12,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { DoiResolverModal } from "@/components/DoiResolverModal";
 
 interface ResearchPanelProps {
   projectId: string;
@@ -23,6 +24,8 @@ export function ResearchPanel({ projectId, onInsertCitation }: ResearchPanelProp
   const [sources, setSources] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [mode, setMode] = useState("standard");
+
+  const [isDoiModalOpen, setIsDoiModalOpen] = useState(false);
 
   useEffect(() => {
     loadSources();
@@ -56,7 +59,17 @@ export function ResearchPanel({ projectId, onInsertCitation }: ResearchPanelProp
           <Globe className="h-4 w-4 text-indigo-600" />
           <span className="font-bold text-slate-800">Kho Nguồn & Research</span>
         </div>
-        <span className="text-[11px] font-semibold text-slate-500">{sources.length} nguồn</span>
+        <div className="flex items-center space-x-1.5">
+          <button
+            onClick={() => setIsDoiModalOpen(true)}
+            className="flex items-center space-x-1 px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] font-bold transition"
+            title="Nhập DOI hoặc ArXiv link"
+          >
+            <BookOpen className="h-3 w-3" />
+            <span>+ DOI / ArXiv</span>
+          </button>
+          <span className="text-[11px] font-semibold text-slate-500">({sources.length})</span>
+        </div>
       </div>
 
       {/* Search Input */}
@@ -156,6 +169,13 @@ export function ResearchPanel({ projectId, onInsertCitation }: ResearchPanelProp
           ))
         )}
       </div>
+
+      <DoiResolverModal
+        projectId={projectId}
+        isOpen={isDoiModalOpen}
+        onClose={() => setIsDoiModalOpen(false)}
+        onSourceAdded={loadSources}
+      />
     </div>
   );
 }

@@ -46,8 +46,18 @@ export async function GET(request: NextRequest) {
     const token = authData.access_token;
 
     // Redirect to client callback page which hydrates Zustand store and sets localStorage
-    const callbackUrl = new URL("/auth/callback", request.url);
+    const callbackUrl = new URL("/callback", request.url);
     callbackUrl.searchParams.set("token", token);
+    if (authData.user) {
+      callbackUrl.searchParams.set(
+        "user",
+        Buffer.from(JSON.stringify(authData.user), "utf8").toString("base64url")
+      );
+    }
+    const from = request.cookies.get("oauth_from")?.value;
+    if (from && from.startsWith("/")) {
+      callbackUrl.searchParams.set("from", from);
+    }
 
     const res = NextResponse.redirect(callbackUrl);
 
@@ -58,6 +68,7 @@ export async function GET(request: NextRequest) {
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
     });
+    res.cookies.delete("oauth_from");
 
     return res;
   } catch (err: any) {

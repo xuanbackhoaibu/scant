@@ -28,6 +28,7 @@ interface AuthState {
   loginWithGoogle: (credential: string) => Promise<void>;
   loginWithGoogleCode: (code: string, redirect_uri?: string) => Promise<void>;
   setSession: (token: string, user: User) => void;
+  updateUser: (patch: Partial<User>) => void;
   logout: () => void;
   checkAuth: () => Promise<void>;
 }
@@ -138,6 +139,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       isAuthenticated: true,
       isLoading: false,
     });
+  },
+
+  updateUser: (patch: Partial<User>) => {
+    set((state) => ({
+      user: state.user ? { ...state.user, ...patch } : state.user,
+    }));
   },
 
   logout: () => {

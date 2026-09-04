@@ -4,6 +4,7 @@ import pytest
 from app.services.security.ssrf_validator import ssrf_validator
 from app.services.security.upload_validator import upload_validator, MalwareScanner
 from app.services.security.secret_manager import secret_manager
+from app.core.config import DEFAULT_JWT_SECRET, Settings
 
 
 def test_ssrf_protection():
@@ -85,3 +86,30 @@ def test_secret_management_and_masking():
     assert masked["api_key"] == "••••••••"
     assert masked["host"] == "prod-db.internal"
     assert masked["port"] == 5432
+
+
+def test_production_config_rejects_default_secret_and_wildcard_cors():
+    insecure = Settings(
+        ENVIRONMENT="production",
+        DEBUG=False,
+        JWT_SECRET=DEFAULT_JWT_SECRET,
+        CORS_ORIGINS=["https://app.example.com", "*"],
+    )
+
+    errors = insecure.validate_production_safety()
+
+    assert "JWT_SECRET must be changed for production." in errors
+    assert "CORS_ORIGINS must not contain '*' in production." in errors
+
+
+def test_production_config_rejects_placeholder_or_short_secret():
+    insecure = Settings(
+        ENVIRONMENT="production",
+        DEBUG=False,
+        JWT_SECRET="change_me_to_a_strong_random_secret_min_32_chars",
+        CORS_ORIGINS=["https://app.example.com"],
+    )
+
+    errors = insecure.validate_production_safety()
+
+    assert "JWT_SECRET must be a strong non-placeholder value of at least 32 characters." in errors

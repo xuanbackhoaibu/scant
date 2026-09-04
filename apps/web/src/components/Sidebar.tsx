@@ -21,11 +21,12 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isSidebarItemActive } from "@/lib/sidebarNav";
 import { useTranslation } from "@/i18n/I18nContext";
 import { useAuthStore } from "@/stores/useAuthStore";
 
 export function Sidebar() {
-  const pathname = usePathname();
+  const pathname = usePathname() || "";
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const [collapsed, setCollapsed] = useState(false);
@@ -62,11 +63,11 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "border-r border-slate-200 bg-white flex flex-col justify-between h-[calc(100vh-3.5rem)] sticky top-14 transition-all duration-200 select-none z-30",
+        "sticky top-14 z-30 flex h-[calc(100vh-3.5rem)] select-none flex-col justify-between border-r border-slate-200 bg-white/82 backdrop-blur-xl transition-all duration-200 dark:border-slate-800 dark:bg-slate-950/82",
         collapsed ? "w-16" : "w-64"
       )}
     >
-      <div className="p-3 space-y-3 overflow-y-auto">
+      <div className="space-y-3 overflow-y-auto p-3">
         {/* Workspace header & collapse trigger */}
         <div className="flex items-center justify-between px-2 pt-1">
           {!collapsed && (
@@ -76,8 +77,8 @@ export function Sidebar() {
           )}
           <button
             onClick={toggleCollapse}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors ml-auto"
+            title={collapsed ? t("common.expand") : t("common.collapse")}
+            className="ml-auto rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
           >
             {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
@@ -87,26 +88,31 @@ export function Sidebar() {
         <nav className="space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+            const isActive = isSidebarItemActive(pathname, item.href);
             return (
               <Link
                 key={item.key}
                 href={item.href}
+                prefetch={true}
                 title={collapsed ? item.label : undefined}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 text-xs font-medium rounded-xl transition-all",
-                  item.highlight
-                    ? "bg-indigo-600 text-white font-bold hover:bg-indigo-700 shadow-xs mb-2"
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all",
+                  item.highlight && isActive
+                    ? "mb-2 bg-slate-950 text-white font-bold shadow-xs hover:bg-slate-800 dark:bg-cyan-300 dark:text-slate-950"
                     : isActive
-                    ? "bg-indigo-50 text-indigo-700 font-semibold"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-50",
+                    ? "bg-cyan-50 text-cyan-800 font-semibold ring-1 ring-cyan-100 dark:bg-cyan-400/10 dark:text-cyan-100 dark:ring-cyan-400/20"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100",
                   collapsed && "justify-center px-0"
                 )}
               >
                 <Icon
                   className={cn(
                     "h-4 w-4 shrink-0",
-                    item.highlight ? "text-white" : isActive ? "text-indigo-600" : "text-slate-400"
+                    item.highlight && isActive
+                      ? "text-white"
+                      : isActive
+                      ? "text-cyan-700 dark:text-cyan-200"
+                      : "text-slate-400"
                   )}
                 />
                 {!collapsed && <span className="truncate">{item.label}</span>}
@@ -117,7 +123,7 @@ export function Sidebar() {
       </div>
 
       {/* Footer: Usage Quota & Profile */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/50 space-y-2">
+      <div className="space-y-2 border-t border-slate-100 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/50">
         {!collapsed ? (
           <>
             <div className="flex items-center justify-between text-[11px] text-slate-500">
@@ -127,8 +133,8 @@ export function Sidebar() {
               </span>
               <span className="font-semibold text-slate-700">82%</span>
             </div>
-            <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
-              <div className="bg-indigo-600 h-full rounded-full w-[82%]" />
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+              <div className="h-full w-[82%] rounded-full bg-cyan-500 dark:bg-cyan-300" />
             </div>
           </>
         ) : (

@@ -13,6 +13,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fromPath, setFromPath] = useState("/");
   const [loading, setLoading] = useState(false);
 
   const register = useAuthStore((state) => state.register);
@@ -22,6 +23,10 @@ export default function RegisterPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const urlError = params.get("error");
+      const from = params.get("from");
+      if (from && from.startsWith("/")) {
+        setFromPath(from);
+      }
       if (urlError) {
         if (urlError === "google_not_configured") {
           setError(t("auth.googleNotConfigured"));
@@ -39,7 +44,7 @@ export default function RegisterPage() {
 
     try {
       await register(name, email, password);
-      router.push("/");
+      router.push(fromPath);
     } catch (err: any) {
       setError(err.message || t("auth.registerFailed"));
     } finally {
@@ -48,7 +53,7 @@ export default function RegisterPage() {
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "/api/auth/google";
+    window.location.href = `/api/auth/google?from=${encodeURIComponent(fromPath)}`;
   };
 
   const toggleLanguage = () => {
@@ -61,6 +66,7 @@ export default function RegisterPage() {
       <div className="absolute top-4 right-4">
         <button
           onClick={toggleLanguage}
+          title={locale === "vi" ? t("common.switchToEnglish") : t("common.switchToVietnamese")}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:text-indigo-600 rounded-lg shadow-2xs transition-colors"
         >
           <Languages className="h-3.5 w-3.5" />
@@ -181,7 +187,7 @@ export default function RegisterPage() {
 
         <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-100">
           {t("auth.alreadyHaveAccount")}{" "}
-          <Link href="/login" className="font-bold text-indigo-600 hover:text-indigo-700">
+          <Link href={`/login?from=${encodeURIComponent(fromPath)}`} className="font-bold text-indigo-600 hover:text-indigo-700">
             {t("auth.signIn")}
           </Link>
         </div>

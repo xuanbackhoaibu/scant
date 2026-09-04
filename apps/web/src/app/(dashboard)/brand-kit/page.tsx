@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Palette, Check, Save } from "lucide-react";
 import { useTranslation } from "@/i18n/I18nContext";
 import { useToast } from "@/components/Toast";
+import { API_BASE } from "@/lib/api";
 
 export default function BrandKitPage() {
   const { t } = useTranslation();
@@ -21,7 +22,7 @@ export default function BrandKitPage() {
     async function loadBrandKit() {
       try {
         const token = localStorage.getItem("auth_token");
-        const res = await fetch("http://localhost:8050/api/v1/brand-kit", {
+        const res = await fetch(`${API_BASE}/brand-kit`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (res.ok) {
@@ -44,7 +45,7 @@ export default function BrandKitPage() {
     setSaving(true);
     try {
       const token = localStorage.getItem("auth_token");
-      const res = await fetch("http://localhost:8050/api/v1/brand-kit", {
+      const res = await fetch(`${API_BASE}/brand-kit`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

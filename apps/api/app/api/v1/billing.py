@@ -50,3 +50,32 @@ async def create_plan_checkout(
         cancel_url=req.cancel_url,
     )
     return res
+
+
+class ConfirmPaymentRequest(BaseModel):
+    session_id: str
+    target_plan: str
+
+
+@router.post("/confirm-payment")
+async def confirm_payment_activation(
+    req: ConfirmPaymentRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Activates upgraded plan and replenishes user token quota."""
+    target = req.target_plan.lower()
+    if target not in ["pro", "enterprise", "team"]:
+        target = "pro"
+
+    current_user.plan = target
+    await db.commit()
+    await db.refresh(current_user)
+
+    return {
+        "success": True,
+        "message": f"Kích hoạt thành công gói {target.upper()}!",
+        "new_plan": target,
+        "user_id": current_user.id,
+    }
+

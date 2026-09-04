@@ -26,19 +26,23 @@ storage/uploads/*
 storage/templates/*
 storage/exports/*
 storage/reports/*
+storage/assets/*
 !storage/uploads/.gitkeep
 !storage/templates/.gitkeep
 !storage/exports/.gitkeep
 !storage/reports/.gitkeep
+!storage/assets/.gitkeep
 apps/storage/*.db
 apps/storage/uploads/*
 apps/storage/templates/*
 apps/storage/exports/*
 apps/storage/reports/*
+apps/storage/assets/*
 !apps/storage/uploads/.gitkeep
 !apps/storage/templates/.gitkeep
 !apps/storage/exports/.gitkeep
 !apps/storage/reports/.gitkeep
+!apps/storage/assets/.gitkeep
 
 # Logs and OS
 *.log

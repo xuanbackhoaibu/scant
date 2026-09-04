@@ -9,17 +9,25 @@ class MetricsCollector:
     """
 
     def __init__(self):
+        self.reset()
+
+    def reset(self):
         self._http_latencies: List[int] = []
         self._ai_latencies: List[int] = []
         self._ai_success_count: int = 0
         self._ai_failure_count: int = 0
+        self._http_total_count: int = 0
+        self._http_error_count: int = 0
         self._export_durations: List[int] = []
         self._research_durations: List[int] = []
 
-    def record_http_request(self, duration_ms: int):
+    def record_http_request(self, duration_ms: int, status_code: int = 200):
         self._http_latencies.append(duration_ms)
         if len(self._http_latencies) > 1000:
             self._http_latencies.pop(0)
+        self._http_total_count += 1
+        if status_code >= 500:
+            self._http_error_count += 1
 
     def record_ai_request(self, latency_ms: int, success: bool = True):
         self._ai_latencies.append(latency_ms)
@@ -43,13 +51,17 @@ class MetricsCollector:
         ai_p50 = sorted(self._ai_latencies)[len(self._ai_latencies) // 2] if self._ai_latencies else 220
         total_ai = self._ai_success_count + self._ai_failure_count
         ai_failure_rate = (self._ai_failure_count / float(total_ai) * 100) if total_ai > 0 else 0.0
+        http_error_rate = (self._http_error_count / float(self._http_total_count) * 100) if self._http_total_count > 0 else 0.0
 
         return {
             "api_latency_p50_ms": http_p50,
             "api_latency_p95_ms": http_p95,
+            "http_total_requests": self._http_total_count,
+            "http_error_count": self._http_error_count,
+            "http_error_rate_pct": round(http_error_rate, 2),
             "ai_latency_p50_ms": ai_p50,
             "ai_failure_rate_pct": round(ai_failure_rate, 2),
-            "ai_total_requests": max(1, total_ai),
+            "ai_total_requests": total_ai,
             "avg_export_duration_ms": int(sum(self._export_durations) / len(self._export_durations)) if self._export_durations else 450,
             "avg_research_duration_ms": int(sum(self._research_durations) / len(self._research_durations)) if self._research_durations else 1800,
             "queue_depth": 0,

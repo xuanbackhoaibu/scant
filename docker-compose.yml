@@ -26,8 +26,10 @@ services:
     container_name: ai_report_studio_api
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgrespassword@postgres:5432/ai_report_studio
-      - JWT_SECRET=ai-report-studio-vip-pro-super-secret-key-32chars-min!
       - ENVIRONMENT=production
+      - DEBUG=false
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET to a strong random value before starting production}
+      - CORS_ORIGINS=${CORS_ORIGINS:?Set CORS_ORIGINS to a JSON list of trusted origins}
     ports:
       - "8050:8050"
     depends_on:

@@ -27,7 +27,11 @@
     "status": "Status",
     "actions": "Actions",
     "noData": "No data available",
-    "errorOccurred": "An error occurred, please try again"
+    "errorOccurred": "An error occurred, please try again",
+    "switchToEnglish": "Switch to English",
+    "switchToVietnamese": "Switch to Vietnamese",
+    "expand": "Expand",
+    "collapse": "Collapse"
   },
   "navigation": {
     "workspace": "Workspace",
@@ -47,12 +51,55 @@
     "profile": "Profile",
     "logout": "Log Out"
   },
+  "commandPalette": {
+    "searchPlaceholder": "Search commands, tasks, or documents...",
+    "noResults": "No matching command or feature found.",
+    "select": "Select",
+    "keyboardHint": "Use ↑ ↓ to move",
+    "categories": {
+      "ai": "AI Actions",
+      "documents": "Documents",
+      "templates": "Templates",
+      "data": "Data Workspace",
+      "automations": "Automations",
+      "admin": "Administration",
+      "settings": "Settings"
+    },
+    "commands": {
+      "autoCreate": "Create automatic report",
+      "newDocument": "Create new document",
+      "templates": "Report template library",
+      "dataConnectors": "Data connectors",
+      "automations": "Automations and report schedules",
+      "admin": "Admin console",
+      "settings": "Workspace and brand kit settings"
+    }
+  },
+  "admin": {
+    "title": "Admin dashboard",
+    "subtitle": "Monitor AI infrastructure, user operations, and SaaS cost efficiency",
+    "systemStable": "System stable 100%",
+    "totalUsers": "Total users",
+    "activeUsers": "active",
+    "totalAiRequests": "Total AI requests",
+    "avgLatency": "average latency",
+    "monthlyAiCost": "Monthly AI cost",
+    "storageUsed": "Storage used",
+    "documents": "documents",
+    "userGovernance": "User and plan governance",
+    "user": "User",
+    "currentPlan": "Current plan",
+    "status": "Status",
+    "active": "Active",
+    "suspended": "Suspended"
+  },
   "auth": {
     "welcomeBack": "Welcome Back",
     "loginSubtitle": "Sign in to continue working on your documents",
     "createAccount": "Create an Account",
     "registerSubtitle": "Start creating professional documents with autonomous AI",
     "continueWithGoogle": "Continue with Google",
+    "useDemoAccount": "Use demo account",
     "orWithEmail": "or sign in with email",
     "nameLabel": "Full Name",
     "namePlaceholder": "John Doe",
@@ -70,7 +117,12 @@
     "dontHaveAccount": "Don't have an account?",
     "googleNotConfigured": "Google Sign-In is not yet configured with a Client ID",
     "loginFailed": "Sign in failed. Please check your credentials.",
-    "registerFailed": "Sign up failed. Please check your information."
+    "registerFailed": "Sign up failed. Please check your information.",
+    "callbackFailedTitle": "Authentication failed",
+    "callbackRedirecting": "Redirecting back to sign in...",
+    "callbackCompleting": "Finishing sign in...",
+    "callbackSyncing": "The system is syncing your Google account and workspace.",
+    "sessionRestoreFailed": "Could not restore the signed-in session"
   },
   "dashboard": {
     "heroQuestion": "What do you want to create today?",
@@ -128,11 +180,39 @@
     "aiProvider": "Default AI Provider",
     "aiModel": "AI Model",
     "changePassword": "Change Password",
+    "changingPassword": "Processing...",
     "currentPassword": "Current Password",
     "newPassword": "New Password",
     "linkedAccounts": "Linked Accounts",
     "googleLinked": "Linked with Google",
-    "googleNotLinked": "Not linked with Google"
+    "googleNotLinked": "Not linked with Google",
+    "billingTitle": "Your service plan",
+    "billingCurrentPlan": "You are currently using:",
+    "planBadge": "Plan",
+    "mostPopular": "Most popular",
+    "businessPlan": "Business",
+    "perMonth": "/month",
+    "proPlanName": "Professional Plan (Pro)",
+    "proPlanDesc": "For students, researchers, and document analysts.",
+    "proFeatureTokens": "5,000,000 Gemini 2.5 Flash tokens",
+    "proFeatureExport": "Unlimited A4 DOCX and PDF exports",
+    "proFeatureDoi": "Smart DOI and ArXiv lookup",
+    "proFeatureHumanize": "AI Text Humanizer and stylometry check",
+    "upgradeVietQR": "Upgrade with VietQR",
+    "enterprisePlanName": "Enterprise Plan",
+    "enterprisePlanDesc": "For research institutes, businesses, and teams processing documents in batch.",
+    "enterpriseFeatureTokens": "50,000,000 high-speed Gemini tokens",
+    "enterpriseFeatureBulk": "Batch report generation",
+    "enterpriseFeatureDiagram": "Mermaid diagrams and LaTeX KaTeX formulas",
+    "enterpriseFeatureVoice": "Convert meeting audio into reports",
+    "upgradeEnterpriseVietQR": "Upgrade Enterprise with VietQR",
+    "paymentUpgradeSuccess": "Plan upgraded successfully!",
+    "vietnameseInterface": "Vietnamese interface",
+    "englishInterface": "English interface",
+    "docLangVi": "Vietnamese",
+    "docLangEn": "English",
+    "docLangAuto": "Auto detect",
+    "recommended": "Recommended"
   },
   "brandKit": {
     "title": "Brand Kit",
@@ -148,10 +228,58 @@
   },
   "templates": {
     "title": "Template Library",
-    "subtitle": "Standard document blueprints to accelerate drafting",
+    "subtitle": "International-grade report, technical document, and business templates",
     "uploadDocx": "Upload DOCX Template",
+    "emptyTitle": "No real templates yet",
     "emptyTemplates": "No templates available. You can upload a DOCX sample for AI structure reverse engineering.",
-    "useTemplate": "Use this template"
+    "noDescription": "This template does not have a description yet.",
+    "useTemplate": "Use Template",
+    "preview": "Preview",
+    "realSource": "Real source",
+    "previewStructure": "Preview structure",
+    "sourceInfo": "Source information",
+    "provider": "Provider",
+    "rating": "Rating",
+    "openOriginal": "Open original template",
+    "noPreview": "No preview structure available",
+    "searchPlaceholder": "Search report templates...",
+    "usageCount": "{count} uses",
+    "scopes": {
+      "public": "Public Marketplace",
+      "workspace": "Workspace",
+      "my": "My Templates"
+    },
+    "categories": {
+      "all": "All",
+      "business": "Business",
+      "financial": "Financial",
+      "technical": "Technical",
+      "academic": "Academic",
+      "research": "Research",
+      "data": "Data",
+      "proposal": "Proposal",
+      "marketing": "Marketing",
+      "operations": "Operations",
+      "custom": "Custom"
+    },
+    "samples": {
+      "business": {
+        "name": "Executive Business Report",
+        "desc": "Business strategy report, market development plan, and resource allocation brief."
+      },
+      "technical": {
+        "name": "Technical Architecture Whitepaper",
+        "desc": "Software architecture template for API specifications and cloud infrastructure design."
+      },
+      "financial": {
+        "name": "Financial Audit and KPI Review",
+        "desc": "Detailed financial report with revenue, cost, EBITDA, and cash flow reconciliation tables."
+      },
+      "marketing": {
+        "name": "Comprehensive Market Research",
+        "desc": "Market sizing, competitor analysis, and target customer profile research."
+      }
+    }
   },
   "errors": {
     "REPORT_NOT_FOUND": "The requested report was not found.",

@@ -1,44 +1,69 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Clock, Play, Plus, RefreshCw, CheckCircle2, Calendar, AlertCircle, Sparkles } from "lucide-react";
+import { api } from "@/lib/api";
 
 export default function AutomationsPage() {
-  const [automations, setAutomations] = useState<any[]>([
-    {
-      id: "auto-1",
-      name: "Weekly Executive Brief Automation",
-      trigger_type: "schedule",
-      cron_expression: "Mỗi thứ Hai lúc 08:00",
-      report_pattern: "Báo cáo Ban Điều Hành Tuần {date}",
-      formats: ["DOCX", "PDF"],
-      last_run: "21/08/2026 08:00",
-      status: "active",
-      last_status: "success",
-    },
-    {
-      id: "auto-2",
-      name: "Monthly Financial Audit Auto-Run",
-      trigger_type: "data_refresh",
-      cron_expression: "Khi dữ liệu ERP được cập nhật",
-      report_pattern: "Báo cáo Tài Chính Tháng {date}",
-      formats: ["PDF"],
-      last_run: "18/08/2026 15:30",
-      status: "active",
-      last_status: "success",
-    },
-  ]);
-
+  const [automations, setAutomations] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [triggeringId, setTriggeringId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleTrigger = (id: string) => {
+  const loadAutomations = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      setAutomations(await api.automations.list());
+    } catch (err: any) {
+      setErrorMsg(err.message || "Không thể tải danh sách automation.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAutomations();
+  }, []);
+
+  const handleTrigger = async (id: string) => {
     setTriggeringId(id);
-    setTimeout(() => {
+    setErrorMsg(null);
+    try {
+      await api.automations.trigger(id);
       setTriggeringId(null);
       setSuccessMsg("Đã khởi chạy automation thành công! Báo cáo mới đã được tự động khởi tạo.");
       setTimeout(() => setSuccessMsg(null), 4000);
-    }, 1500);
+      await loadAutomations();
+    } catch (err: any) {
+      setErrorMsg(err.message || "Không thể chạy automation.");
+    } finally {
+      setTriggeringId(null);
+    }
+  };
+
+  const handleCreateQuickAutomation = async () => {
+    setErrorMsg(null);
+    try {
+      const projects = await api.projects.list();
+      const project = projects[0];
+      if (!project) {
+        setErrorMsg("Bạn cần tạo ít nhất một dự án trước khi lập automation.");
+        return;
+      }
+      await api.automations.create({
+        project_id: project.id,
+        name: `Automation cho ${project.name}`,
+        trigger_type: "manual",
+        report_title_pattern: "Báo cáo Tự động {date}",
+        export_formats: ["docx", "pdf"],
+      });
+      setSuccessMsg("Đã tạo automation thật cho dự án gần nhất.");
+      await loadAutomations();
+    } catch (err: any) {
+      setErrorMsg(err.message || "Không thể tạo automation.");
+    }
   };
 
   return (
@@ -48,6 +73,13 @@ export default function AutomationsPage() {
           <h1 className="text-xl font-bold text-slate-900">Tự Động Hóa Báo Cáo (Report Automations)</h1>
           <p className="text-xs text-slate-500">Cấu hình lịch trình định kỳ, làm mới dữ liệu và tự động xuất bản báo cáo</p>
         </div>
+        <button
+          onClick={handleCreateQuickAutomation}
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700"
+        >
+          <Plus className="h-4 w-4" />
+          <span>Tạo automation thật</span>
+        </button>
       </div>
 
       {successMsg && (
@@ -57,6 +89,26 @@ export default function AutomationsPage() {
         </div>
       )}
 
+      {errorMsg && (
+        <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+          <span>{errorMsg}</span>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[1, 2].map((i) => (
+            <div key={i} className="h-44 rounded-2xl bg-slate-100 animate-pulse" />
+          ))}
+        </div>
+      ) : automations.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+          <Sparkles className="mx-auto h-8 w-8 text-slate-400" />
+          <h3 className="mt-3 text-sm font-bold text-slate-900">Chưa có automation thật</h3>
+          <p className="mt-1 text-xs text-slate-500">Tạo một automation từ dự án hiện có để chạy thử pipeline tự động.</p>
+        </div>
+      ) : (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {automations.map((a) => (
           <div
@@ -77,13 +129,13 @@ export default function AutomationsPage() {
               <h3 className="text-sm font-bold text-slate-900">{a.name}</h3>
               <p className="text-slate-500 flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5 text-slate-400" />
-                <span>Điều kiện: {a.cron_expression}</span>
+                <span>Điều kiện: {a.cron_expression || "Chạy thủ công"}</span>
               </p>
-              <p className="text-slate-500">Quy tắc đặt tên: <span className="font-mono text-slate-700">{a.report_pattern}</span></p>
+              <p className="text-slate-500">Quy tắc đặt tên: <span className="font-mono text-slate-700">{a.report_title_pattern}</span></p>
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] text-slate-400">Lần chạy gần nhất: {a.last_run}</span>
+              <span className="text-[11px] text-slate-400">Lần chạy gần nhất: {a.last_run_at ? new Date(a.last_run_at).toLocaleString("vi-VN") : "Chưa chạy"}</span>
               <button
                 onClick={() => handleTrigger(a.id)}
                 disabled={triggeringId === a.id}
@@ -105,6 +157,7 @@ export default function AutomationsPage() {
           </div>
         ))}
       </div>
+      )}
     </div>
   );
 }

@@ -1,10 +1,13 @@
 import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, patch
+from app.core.config import Settings
+from app.services.ai.gemini_provider import GeminiProvider
 from app.services.ai.types import AIRequest, AITaskType, AIProviderType, AIResponse
 from app.services.ai.model_router import model_router
 from app.services.ai.gateway import ai_gateway
 from app.services.editor.outline_service import outline_service
+from app.services.observability.metrics_collector import metrics_collector
 from app.schemas.ai import AnalyzeIntentRequest
 
 
@@ -29,6 +32,7 @@ def test_model_router_resolutions():
 
 @pytest.mark.asyncio
 async def test_ai_gateway_execute_success():
+    metrics_collector.reset()
     req = AIRequest(
         task_type=AITaskType.SECTION_WRITING,
         prompt="Viết phần tổng quan dự án",
@@ -41,6 +45,7 @@ async def test_ai_gateway_execute_success():
     assert res.usage.completion_tokens > 0
     assert res.latency_ms >= 0
     assert res.failover_applied is False
+    assert metrics_collector.get_summary()["ai_total_requests"] == 1
 
 
 @pytest.mark.asyncio
@@ -67,3 +72,24 @@ async def test_outline_service_via_gateway():
     )
     assert res.suggested_title is not None
     assert len(res.key_themes) > 0
+
+
+def test_ai_offline_fallback_is_disabled_in_production():
+    assert Settings(ENVIRONMENT="development").allow_ai_offline_fallback is True
+    assert Settings(ENVIRONMENT="test").allow_ai_offline_fallback is True
+    assert Settings(ENVIRONMENT="production").allow_ai_offline_fallback is False
+
+
+@pytest.mark.asyncio
+async def test_gemini_provider_without_key_fails_in_production(monkeypatch):
+    production_settings = Settings(
+        ENVIRONMENT="production",
+        DEBUG=False,
+        JWT_SECRET="real-production-secret-value-with-more-than-32-characters",
+        CORS_ORIGINS=["https://app.example.com"],
+        GEMINI_API_KEY="",
+    )
+    monkeypatch.setattr("app.services.ai.gemini_provider.settings", production_settings)
+
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY is required"):
+        await GeminiProvider().generate("Viết phần mở đầu")

@@ -1,28 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldCheck, Users, Cpu, Activity, DollarSign, Database, AlertTriangle, RefreshCw } from "lucide-react";
+import { useTranslation } from "@/i18n/I18nContext";
+import { api, ApiError } from "@/lib/api";
 
 export default function AdminConsolePage() {
-  const [metrics, setMetrics] = useState({
-    total_users: 142,
-    active_users: 118,
-    total_projects: 384,
-    reports_generated: 712,
-    ai_requests_total: 4890,
-    ai_tokens_consumed: 12450000,
-    total_ai_cost_usd: 14.85,
-    avg_ai_latency_ms: 220,
-    failed_jobs_count: 0,
-    storage_used_mb: 142.5,
-  });
+  const { t } = useTranslation();
+  const [metrics, setMetrics] = useState<any | null>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [users, setUsers] = useState<any[]>([
-    { id: "usr-1", email: "ceo@corp.com", name: "CEO Executive", plan_tier: "enterprise", is_active: true },
-    { id: "usr-2", email: "lead@agency.com", name: "Agency Lead", plan_tier: "pro", is_active: true },
-    { id: "usr-3", email: "analyst@bank.vn", name: "Financial Analyst", plan_tier: "team", is_active: true },
-    { id: "usr-4", email: "guest@freemail.com", name: "Guest User", plan_tier: "free", is_active: false },
-  ]);
+  useEffect(() => {
+    async function loadAdmin() {
+      setLoading(true);
+      setError(null);
+      try {
+        const [dashboard, userRows] = await Promise.all([
+          api.admin.dashboard(),
+          api.admin.users(),
+        ]);
+        setMetrics(dashboard);
+        setUsers(userRows);
+      } catch (err: any) {
+        if (err instanceof ApiError && err.status === 403) {
+          setError("Tài khoản hiện tại chưa có quyền quản trị hệ thống.");
+        } else {
+          setError(err.message || "Không thể tải dữ liệu quản trị.");
+        }
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadAdmin();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-5 text-xs font-semibold text-slate-600">
+        <RefreshCw className="h-4 w-4 animate-spin text-indigo-600" />
+        <span>Đang tải dữ liệu quản trị thật...</span>
+      </div>
+    );
+  }
+
+  if (error || !metrics) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+        <div className="flex items-center gap-2 font-bold">
+          <AlertTriangle className="h-4 w-4" />
+          <span>Không thể mở bảng quản trị</span>
+        </div>
+        <p className="mt-2 text-xs">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -32,13 +65,13 @@ export default function AdminConsolePage() {
             <ShieldCheck className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Bảng Điều Khiển Quản Trị (Admin Console)</h1>
-            <p className="text-xs text-slate-500">Giám sát hạ tầng AI, vận hành người dùng và tối ưu chi phí SaaS</p>
+            <h1 className="text-xl font-bold text-slate-900">{t("admin.title")}</h1>
+            <p className="text-xs text-slate-500">{t("admin.subtitle")}</p>
           </div>
         </div>
         <span className="px-3 py-1 bg-emerald-50 text-emerald-700 font-bold text-xs rounded-full border border-emerald-200 flex items-center gap-1.5">
           <Activity className="h-3.5 w-3.5 text-emerald-500" />
-          Hệ thống ổn định 100%
+          {t("admin.systemStable")}
         </span>
       </div>
 
@@ -46,23 +79,23 @@ export default function AdminConsolePage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
           <p className="text-slate-400 font-medium flex items-center gap-1">
-            <Users className="h-3.5 w-3.5 text-slate-400" /> Tổng người dùng
+            <Users className="h-3.5 w-3.5 text-slate-400" /> {t("admin.totalUsers")}
           </p>
           <p className="text-lg font-bold text-slate-900">{metrics.total_users}</p>
-          <span className="text-[11px] text-emerald-600 font-semibold">{metrics.active_users} đang hoạt động</span>
+          <span className="text-[11px] text-emerald-600 font-semibold">{metrics.active_users} {t("admin.activeUsers")}</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
           <p className="text-slate-400 font-medium flex items-center gap-1">
-            <Cpu className="h-3.5 w-3.5 text-slate-400" /> Tổng AI Requests
+            <Cpu className="h-3.5 w-3.5 text-slate-400" /> {t("admin.totalAiRequests")}
           </p>
           <p className="text-lg font-bold text-slate-900">{metrics.ai_requests_total.toLocaleString()}</p>
-          <span className="text-[11px] text-slate-500">{metrics.avg_ai_latency_ms}ms avg latency</span>
+          <span className="text-[11px] text-slate-500">{metrics.avg_ai_latency_ms}ms {t("admin.avgLatency")}</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
           <p className="text-slate-400 font-medium flex items-center gap-1">
-            <DollarSign className="h-3.5 w-3.5 text-slate-400" /> Chi phí AI tháng
+            <DollarSign className="h-3.5 w-3.5 text-slate-400" /> {t("admin.monthlyAiCost")}
           </p>
           <p className="text-lg font-bold text-slate-900">${metrics.total_ai_cost_usd} USD</p>
           <span className="text-[11px] text-indigo-600 font-semibold">{(metrics.ai_tokens_consumed / 1000000).toFixed(1)}M tokens</span>
@@ -70,24 +103,24 @@ export default function AdminConsolePage() {
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
           <p className="text-slate-400 font-medium flex items-center gap-1">
-            <Database className="h-3.5 w-3.5 text-slate-400" /> Dung lượng lưu trữ
+            <Database className="h-3.5 w-3.5 text-slate-400" /> {t("admin.storageUsed")}
           </p>
           <p className="text-lg font-bold text-slate-900">{metrics.storage_used_mb} MB</p>
-          <span className="text-[11px] text-emerald-600 font-semibold">{metrics.reports_generated} tài liệu</span>
+          <span className="text-[11px] text-emerald-600 font-semibold">{metrics.reports_generated} {t("admin.documents")}</span>
         </div>
       </div>
 
       {/* User Governance Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4 text-xs">
-        <h3 className="text-sm font-bold text-slate-900">Quản Lý Người Dùng & Gói Dịch Vụ</h3>
+        <h3 className="text-sm font-bold text-slate-900">{t("admin.userGovernance")}</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-slate-100 text-slate-400 font-semibold pb-2">
-                <th className="pb-2">Người dùng</th>
+                <th className="pb-2">{t("admin.user")}</th>
                 <th className="pb-2">Email</th>
-                <th className="pb-2">Gói hiện tại</th>
-                <th className="pb-2">Trạng thái</th>
+                <th className="pb-2">{t("admin.currentPlan")}</th>
+                <th className="pb-2">{t("admin.status")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -102,9 +135,9 @@ export default function AdminConsolePage() {
                   </td>
                   <td className="py-2.5">
                     {u.is_active ? (
-                      <span className="text-emerald-600 font-semibold text-[11px]">Hoạt động</span>
+                      <span className="text-emerald-600 font-semibold text-[11px]">{t("admin.active")}</span>
                     ) : (
-                      <span className="text-rose-500 font-semibold text-[11px]">Tạm khóa</span>
+                      <span className="text-rose-500 font-semibold text-[11px]">{t("admin.suspended")}</span>
                     )}
                   </td>
                 </tr>

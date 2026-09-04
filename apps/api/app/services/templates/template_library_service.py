@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
 from app.models.entities import Template, TemplateVersion, User
 from app.repositories.base import BaseRepository
+from app.services.templates.external_template_catalog import list_external_templates
 
 
 class TemplateLibraryService:
@@ -77,6 +78,14 @@ class TemplateLibraryService:
                 "is_public": t.is_public,
                 "created_at": t.created_at,
             })
+
+        if scope in ["public", "all"]:
+            existing_ids = {item["id"] for item in output}
+            output.extend(
+                item
+                for item in list_external_templates(category=category, search=search)
+                if item["id"] not in existing_ids
+            )
 
         return output
 

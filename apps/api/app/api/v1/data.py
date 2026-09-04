@@ -1,13 +1,25 @@
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.entities import User, Project, UploadedFile
 from app.repositories.project_repo import project_repo, file_repo
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_optional
 from app.services.data.data_engine import data_engine
+from app.services.data.spreadsheet_visual_engine import spreadsheet_visual_engine
+from app.services.data.sheet_analysis_service import sheet_analysis_service
+from app.services.data.spreadsheet_query_engine import spreadsheet_query_engine
+from app.services.data.workbook_chat_service import workbook_chat_service
+from app.services.data.workbook_scanner import workbook_scanner
+from app.services.data.action_engine import spreadsheet_action_engine
+from app.services.data.google_sheets_service import google_sheets_service
+from app.services.data.url_dataset_loader import url_dataset_loader
+from app.core.config import settings
+import hashlib
+import json
+from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/data", tags=["data"])
 
@@ -29,6 +41,503 @@ class ChartSpecRequest(BaseModel):
     title: Optional[str] = None
 
 
+@router.post("/preview-upload")
+async def preview_uploaded_dataset(
+    file: Optional[UploadFile] = File(None),
+    data_source_url: Optional[str] = Form(None),
+    sheet_range: Optional[str] = Form(None),
+    analysis_request: Optional[str] = Form(None),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    has_file = file is not None and bool(file.filename and file.filename.strip())
+    url_str = (data_source_url or "").strip()
+
+    if not has_file and not url_str:
+        raise HTTPException(
+            status_code=400,
+            detail="Vui lòng tải tệp dữ liệu từ máy hoặc dán link dữ liệu công khai."
+        )
+
+    if has_file and file is not None:
+        filename = file.filename or "dataset"
+        contents = await file.read()
+        mime_type = file.content_type or "application/octet-stream"
+        source_mode = "file"
+    else:
+        try:
+            contents, filename, mime_type = await url_dataset_loader.load(url_str, sheet_range=sheet_range)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Không thể tải dữ liệu từ liên kết: {str(e)}")
+        source_mode = "url"
+
+    ext = Path(filename).suffix.lower()
+    if ext not in [".xlsx", ".xls", ".xlsm", ".csv"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Chỉ hỗ trợ tệp dữ liệu XLSX, XLS, XLSM hoặc CSV."
+        )
+
+    if len(contents) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Tệp vượt quá giới hạn dung lượng 50MB.")
+
+    user_tag = str(current_user.id) if current_user else "guest"
+    file_hash = hashlib.sha256(contents).hexdigest()
+    tmp_path = settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{filename}"
+    with open(tmp_path, "wb") as out:
+        out.write(contents)
+
+    try:
+        profile = data_engine.profile_dataset(str(tmp_path), sheet_range=sheet_range)
+        visual_workbook = spreadsheet_visual_engine.extract_visual_workbook(str(tmp_path))
+        selected_sheet_name, _ = data_engine.parse_sheet_range(sheet_range)
+        initial_analysis = await sheet_analysis_service.analyze_sheet(str(tmp_path), sheet_name=selected_sheet_name)
+        scanner_source_type = "google_sheets" if url_dataset_loader.is_google_sheets(url_str) else source_mode
+        workbook_ctx = workbook_scanner.scan_workbook(
+            file_path=str(tmp_path),
+            source_type=scanner_source_type,
+            source_url=url_str if source_mode == "url" else None,
+            preferred_active_sheet=selected_sheet_name,
+        )
+        facts = profile.get("verified_facts", [])
+        key_facts = facts[:30]
+        return {
+            "ok": True,
+            "source_mode": source_mode,
+            "source_url": url_str if source_mode == "url" else "",
+            "sheet_range": sheet_range or "",
+            "analysis_request": analysis_request or "",
+            "file_name": filename,
+            "mime_type": mime_type,
+            "sheet_count": profile.get("sheet_count"),
+            "total_rows": profile.get("total_rows"),
+            "total_columns": profile.get("total_columns"),
+            "columns": profile.get("columns", []),
+            "preview_rows": profile.get("preview_rows", []),
+            "verified_facts": key_facts,
+            "warnings": profile.get("warnings", []),
+            "sheets": [
+                {
+                    "name": sheet.get("name"),
+                    "row_count": sheet.get("row_count"),
+                    "column_count": sheet.get("column_count"),
+                    "columns": sheet.get("columns", [])[:80],
+                    "records": sheet.get("records", [])[:100],
+                    "statistics": sheet.get("statistics", {}),
+                }
+                for sheet in profile.get("sheets", [])[:10]
+            ],
+            "visual_workbook": visual_workbook,
+            "initial_analysis": initial_analysis,
+            "workbook_context": workbook_ctx,
+        }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Không thể đọc dữ liệu: {str(e)}")
+
+
+@router.post("/analyze-sheet")
+async def analyze_specific_sheet(
+    file: Optional[UploadFile] = File(None),
+    file_id: Optional[str] = Form(None),
+    data_source_url: Optional[str] = Form(None),
+    sheet_name: Optional[str] = Form(None),
+    force_refresh: bool = Form(False),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    target_path = None
+    user_tag = str(current_user.id) if current_user else "guest"
+    if file_id:
+        f = await file_repo.get(db, file_id)
+        if f and Path(f.file_path).exists():
+            target_path = f.file_path
+    elif file is not None and bool(file.filename and file.filename.strip()):
+        contents = await file.read()
+        file_hash = hashlib.sha256(contents).hexdigest()
+        target_path = str(settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{file.filename}")
+        with open(target_path, "wb") as out:
+            out.write(contents)
+    elif data_source_url and data_source_url.strip():
+        contents, filename, mime_type = await url_dataset_loader.load(data_source_url.strip())
+        file_hash = hashlib.sha256(contents).hexdigest()
+        target_path = str(settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{filename}")
+        with open(target_path, "wb") as out:
+            out.write(contents)
+
+    if not target_path or not Path(target_path).exists():
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp dữ liệu để phân tích sheet.")
+
+    try:
+        analysis = await sheet_analysis_service.analyze_sheet(
+            file_path=target_path,
+            sheet_name=sheet_name,
+            force_refresh=force_refresh,
+        )
+        return {"ok": True, "analysis": analysis}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi khi phân tích sheet: {str(e)}")
+
+
+@router.post("/workbook-chat")
+async def chat_with_workbook(
+    file: Optional[UploadFile] = File(None),
+    file_id: Optional[str] = Form(None),
+    data_source_url: Optional[str] = Form(None),
+    sheet_name: Optional[str] = Form(None),
+    message: str = Form(...),
+    selected_range: Optional[str] = Form(None),
+    conversation_id: Optional[str] = Form(None),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    target_path = None
+    user_tag = str(current_user.id) if current_user else "guest"
+    if file_id:
+        f = await file_repo.get(db, file_id)
+        if f and Path(f.file_path).exists():
+            target_path = f.file_path
+    elif file is not None and bool(file.filename and file.filename.strip()):
+        contents = await file.read()
+        file_hash = hashlib.sha256(contents).hexdigest()
+        target_path = str(settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{file.filename}")
+        with open(target_path, "wb") as out:
+            out.write(contents)
+    elif data_source_url and data_source_url.strip():
+        contents, filename, mime_type = await url_dataset_loader.load(data_source_url.strip())
+        file_hash = hashlib.sha256(contents).hexdigest()
+        target_path = str(settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{filename}")
+        with open(target_path, "wb") as out:
+            out.write(contents)
+
+    if not target_path or not Path(target_path).exists():
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp dữ liệu bảng tính để trò chuyện.")
+
+    try:
+        response = await workbook_chat_service.chat(
+            file_path=target_path,
+            message=message,
+            sheet_name=sheet_name,
+            selected_range=selected_range,
+            conversation_id=conversation_id,
+        )
+        return {"ok": True, **response}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi xử lý câu hỏi bảng tính: {str(e)}")
+
+
+@router.post("/workbook-analysis-action")
+async def run_workbook_analysis_action(
+    file: Optional[UploadFile] = File(None),
+    file_id: Optional[str] = Form(None),
+    data_source_url: Optional[str] = Form(None),
+    sheet_name: Optional[str] = Form(None),
+    prompt: str = Form(...),
+    selected_range: Optional[str] = Form(None),
+    scope: Optional[str] = Form(None),
+    highlight_color: Optional[str] = Form(None),
+    conversation_id: Optional[str] = Form(None),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    target_path = None
+    user_tag = str(current_user.id) if current_user else "guest"
+    if file_id:
+        f = await file_repo.get(db, file_id)
+        if f and Path(f.file_path).exists():
+            target_path = f.file_path
+    elif file is not None and bool(file.filename and file.filename.strip()):
+        contents = await file.read()
+        file_hash = hashlib.sha256(contents).hexdigest()
+        target_path = str(settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{file.filename}")
+        with open(target_path, "wb") as out:
+            out.write(contents)
+    elif data_source_url and data_source_url.strip():
+        contents, filename, mime_type = await url_dataset_loader.load(data_source_url.strip())
+        file_hash = hashlib.sha256(contents).hexdigest()
+        target_path = str(settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{filename}")
+        with open(target_path, "wb") as out:
+            out.write(contents)
+
+    if not target_path or not Path(target_path).exists():
+        raise HTTPException(status_code=400, detail="Không tìm thấy tệp dữ liệu để chạy phân tích.")
+
+    try:
+        parsed_scope = None
+        if scope:
+            try:
+                parsed_scope = json.loads(scope)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Scope phân tích không hợp lệ.")
+        response = await workbook_chat_service.analyze_action(
+            file_path=target_path,
+            prompt=prompt,
+            sheet_name=sheet_name,
+            selected_range=selected_range,
+            conversation_id=conversation_id,
+            scope=parsed_scope,
+            highlight_color=highlight_color,
+            data_source_url=data_source_url,
+            user=current_user,
+            db=db,
+        )
+        return {"ok": True, **response}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi chạy phân tích workbook: {str(e)}")
+
+
+@router.post("/cross-file-compare")
+async def cross_file_compare(
+    file_1: Optional[UploadFile] = File(None),
+    file_2: Optional[UploadFile] = File(None),
+    file_id_1: Optional[str] = Form(None),
+    file_id_2: Optional[str] = Form(None),
+    sheet1_name: Optional[str] = Form(None),
+    sheet2_name: Optional[str] = Form(None),
+    key_column_1: Optional[str] = Form(None),
+    key_column_2: Optional[str] = Form(None),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    user_tag = str(current_user.id) if current_user else "guest"
+
+    path1 = None
+    if file_id_1:
+        f1 = await file_repo.get(db, file_id_1)
+        if f1 and Path(f1.file_path).exists():
+            path1 = f1.file_path
+    elif file_1 and file_1.filename:
+        c1 = await file_1.read()
+        h1 = hashlib.sha256(c1).hexdigest()
+        path1 = str(settings.UPLOAD_DIR / f"cmp_{user_tag}_{h1[:10]}_{file_1.filename}")
+        with open(path1, "wb") as out:
+            out.write(c1)
+
+    path2 = None
+    if file_id_2:
+        f2 = await file_repo.get(db, file_id_2)
+        if f2 and Path(f2.file_path).exists():
+            path2 = f2.file_path
+    elif file_2 and file_2.filename:
+        c2 = await file_2.read()
+        h2 = hashlib.sha256(c2).hexdigest()
+        path2 = str(settings.UPLOAD_DIR / f"cmp_{user_tag}_{h2[:10]}_{file_2.filename}")
+        with open(path2, "wb") as out:
+            out.write(c2)
+
+    if not path1 or not path2:
+        raise HTTPException(status_code=400, detail="Vui lòng cung cấp đầy đủ 2 file để đối chiếu.")
+
+    try:
+        res = spreadsheet_query_engine.cross_file_compare(
+            file_path_1=path1,
+            sheet1_name=sheet1_name,
+            file_path_2=path2,
+            sheet2_name=sheet2_name,
+            key_column_1=key_column_1,
+            key_column_2=key_column_2,
+        )
+        return {"ok": True, **res}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi đối chiếu 2 file: {str(e)}")
+
+
+@router.post("/action-undo")
+async def undo_spreadsheet_action(
+    session_id: str = Form("default"),
+    spreadsheet_id: Optional[str] = Form(None),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    res = spreadsheet_action_engine.undo_last_action(session_id=session_id)
+    # Also attempt Google Sheets undo if user token is available
+    token, _ = await google_sheets_service.get_valid_access_token(user=current_user, db=db)
+    if token:
+        gs_undo = await google_sheets_service.undo_highlight(session_id=session_id, access_token=token)
+        res["google_undo"] = gs_undo
+    return res
+
+
+@router.post("/google-sync-retry")
+async def retry_google_sheets_sync(
+    spreadsheet_id: str = Form(...),
+    sheet_name: str = Form("Sheet1"),
+    cells: str = Form(...),  # JSON list string or comma-separated
+    color_hex: str = Form("#FEF08A"),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """Direct 1-click retry to sync cell formatting to Google Sheets."""
+    clean_id = google_sheets_service.extract_spreadsheet_id(spreadsheet_id) or spreadsheet_id
+    token, err = await google_sheets_service.get_valid_access_token(user=current_user, db=db)
+    if not token:
+        return {
+            "ok": False,
+            "synced_to_google_sheets": False,
+            "verified_on_google_sheets": False,
+            "error": "Ứng dụng chưa có quyền chỉnh sửa Google Sheets. Vui lòng cấp quyền (Google Sheets Write Scope) để đồng bộ.",
+            "requires_auth": True,
+        }
+
+    cell_list = []
+    try:
+        if cells.strip().startswith("["):
+            cell_list = json.loads(cells)
+        else:
+            cell_list = [c.strip() for c in cells.split(",") if c.strip()]
+    except Exception:
+        cell_list = [c.strip() for c in cells.split(",") if c.strip()]
+
+    res = await google_sheets_service.highlight_cells(
+        spreadsheet_id=clean_id,
+        sheet_name=sheet_name,
+        cell_addresses=cell_list,
+        color_hex=color_hex,
+        access_token=token,
+    )
+    return {"ok": res.get("success", False), **res}
+
+
+@router.post("/clear-google-highlights")
+async def clear_google_highlights(
+    spreadsheet_id: str = Form(...),
+    sheet_name: str = Form("Sheet1"),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    """Restores original formatting on Google Sheets for the active sheet."""
+    clean_id = google_sheets_service.extract_spreadsheet_id(spreadsheet_id) or spreadsheet_id
+    token, _ = await google_sheets_service.get_valid_access_token(user=current_user, db=db)
+    if not token:
+        return {"ok": False, "error": "Thiếu quyền truy cập Google Sheets."}
+
+    res = await google_sheets_service.clear_all_highlights(
+        spreadsheet_id=clean_id,
+        sheet_name=sheet_name,
+        access_token=token,
+    )
+    return res
+
+
+@router.post("/apply-modifications")
+async def apply_workbook_modifications(
+    file: Optional[UploadFile] = File(None),
+    file_id: Optional[str] = Form(None),
+    data_source_url: Optional[str] = Form(None),
+    sheet_name: Optional[str] = Form("Sheet1"),
+    cells: str = Form(...),  # JSON list string e.g. '["H11","I25"]' or comma-separated
+    color_hex: str = Form("FFFF00"),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: AsyncSession = Depends(get_db),
+):
+    target_path = None
+    orig_filename = "workbook.xlsx"
+    user_tag = str(current_user.id) if current_user else "guest"
+    if file_id:
+        f = await file_repo.get(db, file_id)
+        if f and Path(f.file_path).exists():
+            target_path = f.file_path
+            orig_filename = f.filename
+    elif file is not None and bool(file.filename and file.filename.strip()):
+        contents = await file.read()
+        file_hash = hashlib.sha256(contents).hexdigest()
+        orig_filename = file.filename
+        target_path = str(settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{file.filename}")
+        with open(target_path, "wb") as out:
+            out.write(contents)
+    elif data_source_url and data_source_url.strip():
+        contents, filename, mime_type = await url_dataset_loader.load(data_source_url.strip())
+        file_hash = hashlib.sha256(contents).hexdigest()
+        orig_filename = filename
+        target_path = str(settings.UPLOAD_DIR / f"preview_{user_tag}_{file_hash[:12]}_{filename}")
+        with open(target_path, "wb") as out:
+            out.write(contents)
+
+    if not target_path or not Path(target_path).exists():
+        raise HTTPException(status_code=400, detail="Không tìm thấy file để áp dụng chỉnh sửa.")
+
+    # Parse cells list
+    cell_list = []
+    try:
+        if cells.strip().startswith("["):
+            cell_list = json.loads(cells)
+        else:
+            cell_list = [c.strip() for c in cells.split(",") if c.strip()]
+    except Exception:
+        cell_list = [c.strip() for c in cells.split(",") if c.strip()]
+
+    # Check and sync to Google Sheets if document is from Google Sheets
+    google_sync_res = {
+        "is_google_sheet": False,
+        "spreadsheet_id": None,
+        "synced_to_google_sheets": False,
+        "verified_on_google_sheets": False,
+        "google_sync_error": None,
+    }
+    spreadsheet_id = google_sheets_service.extract_spreadsheet_id(data_source_url)
+    if spreadsheet_id and cell_list:
+        google_sync_res["is_google_sheet"] = True
+        google_sync_res["spreadsheet_id"] = spreadsheet_id
+        token, token_err = await google_sheets_service.get_valid_access_token(user=current_user, db=db)
+        if token:
+            gs_out = await google_sheets_service.highlight_cells(
+                spreadsheet_id=spreadsheet_id,
+                sheet_name=sheet_name or "Sheet1",
+                cell_addresses=cell_list,
+                color_hex=color_hex,
+                access_token=token,
+            )
+            google_sync_res["synced_to_google_sheets"] = gs_out.get("synced_to_google_sheets", False)
+            google_sync_res["verified_on_google_sheets"] = gs_out.get("verified_on_google_sheets", False)
+            google_sync_res["google_sync_error"] = gs_out.get("error")
+        else:
+            google_sync_res["google_sync_error"] = (
+                "Ứng dụng chưa có quyền chỉnh sửa Google Sheets. Vui lòng cấp quyền chỉnh sửa để đồng bộ."
+            )
+
+    try:
+        out_stem = Path(orig_filename).stem
+        out_filename = f"{out_stem}_highlighted.xlsx"
+        out_path = str(settings.UPLOAD_DIR / f"modified_{user_tag}_{out_filename}")
+
+        spreadsheet_query_engine.apply_highlights_to_workbook(
+            file_path=target_path,
+            sheet_name=sheet_name or "Sheet1",
+            cell_addresses=cell_list,
+            color_hex=color_hex.replace("#", "").upper(),
+            output_path=out_path,
+        )
+
+        return {
+            "ok": True,
+            "modified_file_name": out_filename,
+            "highlighted_count": len(cell_list),
+            "download_url": f"/api/v1/data/download-file?filename={Path(out_path).name}",
+            "google_sync": google_sync_res,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Lỗi khi lưu chỉnh sửa vào XLSX: {str(e)}")
+
+
+@router.get("/download-file")
+async def download_data_file(
+    filename: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    safe_name = Path(filename).name
+    file_path = settings.UPLOAD_DIR / safe_name
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File không tồn tại hoặc đã hết hạn.")
+
+    return FileResponse(
+        path=str(file_path),
+        filename=safe_name.split("_", 2)[-1] if "_" in safe_name else safe_name,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @router.get("/profile/{file_id}")
 async def profile_file_dataset(
     file_id: str,
@@ -44,6 +553,8 @@ async def profile_file_dataset(
 
     try:
         profile = data_engine.profile_dataset(f.file_path)
+        visual_workbook = spreadsheet_visual_engine.extract_visual_workbook(f.file_path)
+        profile["visual_workbook"] = visual_workbook
         return profile
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error analyzing dataset: {str(e)}")
@@ -180,4 +691,3 @@ async def invalidate_dependency(
     from app.services.data.dependency_graph_service import dependency_graph_service
     stale_nodes = dependency_graph_service.invalidate_source(req.report_id, req.source_node)
     return {"report_id": req.report_id, "stale_nodes": list(stale_nodes)}
-

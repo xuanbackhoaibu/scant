@@ -154,3 +154,17 @@ async def direct_research_search(
     ranked = source_ranker.rank_sources(raw)
     return {"query": query, "results": ranked}
 
+
+@router.post("/resolve-identifier")
+async def resolve_academic_identifier(
+    input_str: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Resolves a DOI, ArXiv ID/URL, or web link into structured academic citation metadata."""
+    from app.services.citations.doi_arxiv_resolver import doi_arxiv_resolver
+    resolved = await doi_arxiv_resolver.resolve(input_str)
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Không thể trích xuất định danh học thuật từ liên kết/mã đã nhập.")
+    return resolved.model_dump()
+
+

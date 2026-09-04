@@ -14,6 +14,7 @@ import {
   Download,
   CheckSquare,
 } from "lucide-react";
+import { useTranslation } from "@/i18n/I18nContext";
 
 interface CommandItem {
   id: string;
@@ -27,6 +28,7 @@ export function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
   const router = useRouter();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -44,28 +46,28 @@ export function CommandPalette() {
   const commands: CommandItem[] = [
     {
       id: "auto-create",
-      title: "One-Click Auto Report (Tạo Báo Cáo Tự Động 1-Click)",
-      category: "AI Actions",
+      title: t("commandPalette.commands.autoCreate"),
+      category: t("commandPalette.categories.ai"),
       icon: Sparkles,
       action: () => {
-        router.push("/wizard?mode=auto");
+        router.push("/projects/new");
         setIsOpen(false);
       },
     },
     {
       id: "new-doc",
-      title: "Tạo tài liệu mới từ Wizard (Đa năng)",
-      category: "Documents",
+      title: t("commandPalette.commands.newDocument"),
+      category: t("commandPalette.categories.documents"),
       icon: FileText,
       action: () => {
-        router.push("/wizard");
+        router.push("/projects/new");
         setIsOpen(false);
       },
     },
     {
       id: "templates",
-      title: "Thư viện Mẫu Báo cáo & Marketplace",
-      category: "Templates",
+      title: t("commandPalette.commands.templates"),
+      category: t("commandPalette.categories.templates"),
       icon: Layers,
       action: () => {
         router.push("/templates");
@@ -74,8 +76,8 @@ export function CommandPalette() {
     },
     {
       id: "data-connectors",
-      title: "Kết nối Dữ liệu (PostgreSQL, MySQL, CSV, REST API)",
-      category: "Data Workspace",
+      title: t("commandPalette.commands.dataConnectors"),
+      category: t("commandPalette.categories.data"),
       icon: Database,
       action: () => {
         router.push("/data");
@@ -84,8 +86,8 @@ export function CommandPalette() {
     },
     {
       id: "automations",
-      title: "Tự Động Hóa & Lập Lịch Báo Cáo Định Kỳ",
-      category: "Automations",
+      title: t("commandPalette.commands.automations"),
+      category: t("commandPalette.categories.automations"),
       icon: Zap,
       action: () => {
         router.push("/automations");
@@ -94,8 +96,8 @@ export function CommandPalette() {
     },
     {
       id: "admin",
-      title: "Bảng Điều Khiển Quản Trị Hệ Thống (Admin Console)",
-      category: "Administration",
+      title: t("commandPalette.commands.admin"),
+      category: t("commandPalette.categories.admin"),
       icon: ShieldCheck,
       action: () => {
         router.push("/admin");
@@ -104,8 +106,8 @@ export function CommandPalette() {
     },
     {
       id: "settings",
-      title: "Cài đặt Workspace & Bộ Nhận Diện Thương Hiệu (Brand Kit)",
-      category: "Settings",
+      title: t("commandPalette.commands.settings"),
+      category: t("commandPalette.categories.settings"),
       icon: Settings,
       action: () => {
         router.push("/settings");
@@ -131,7 +133,7 @@ export function CommandPalette() {
           <input
             autoFocus
             type="text"
-            placeholder="Tìm kiếm lệnh, tác vụ, hoặc tài liệu (hoặc gõ để lọc)..."
+            placeholder={t("commandPalette.searchPlaceholder")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-hidden"
@@ -145,7 +147,7 @@ export function CommandPalette() {
         <div className="max-h-80 overflow-y-auto p-2 space-y-1">
           {filteredCommands.length === 0 ? (
             <div className="py-8 text-center text-xs text-slate-400">
-              Không tìm thấy lệnh hoặc chức năng phù hợp.
+              {t("commandPalette.noResults")}
             </div>
           ) : (
             filteredCommands.map((c) => {
@@ -168,7 +170,7 @@ export function CommandPalette() {
                     </div>
                   </div>
                   <span className="text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 font-medium">
-                    ↵ Chọn
+                    ↵ {t("commandPalette.select")}
                   </span>
                 </button>
               );
@@ -178,8 +180,8 @@ export function CommandPalette() {
 
         {/* Footer hints */}
         <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-          <span>AI Universal Document Workspace</span>
-          <span>Dùng phím ↑ ↓ để di chuyển</span>
+          <span>{t("common.appTagline")}</span>
+          <span>{t("commandPalette.keyboardHint")}</span>
         </div>
       </div>
     </div>

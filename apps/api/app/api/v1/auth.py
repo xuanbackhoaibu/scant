@@ -1,3 +1,4 @@
+import secrets
 from datetime import timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,8 +22,12 @@ workspace_repo = BaseRepository[Workspace](Workspace)
 account_repo = BaseRepository[AuthAccount](AuthAccount)
 
 
-async def _process_google_user(user_info: GoogleUserInfo, db: AsyncSession) -> TokenResponse:
-    """Helper that creates, links, or returns existing user for Google auth."""
+async def _process_google_user(
+    user_info: GoogleUserInfo,
+    db: AsyncSession,
+    token_data: Optional[Any] = None,
+) -> TokenResponse:
+    """Helper that creates, links, or returns existing user for Google auth and records OAuth tokens."""
     # 1. Search user by google_sub first
     stmt = select(User).where(User.google_sub == user_info.google_sub)
     res = await db.execute(stmt)
@@ -45,7 +50,7 @@ async def _process_google_user(user_info: GoogleUserInfo, db: AsyncSession) -> T
                 "name": user_info.name,
                 "google_sub": user_info.google_sub,
                 "avatar_url": user_info.picture,
-                "password_hash": None,
+                "password_hash": f"oauth_google_{secrets.token_hex(24)}",
                 "plan": "pro",
                 "is_active": True,
                 "preferred_locale": "vi",
@@ -62,20 +67,40 @@ async def _process_google_user(user_info: GoogleUserInfo, db: AsyncSession) -> T
                 "brand_kit_json": {},
             })
 
-    # Record or update Google auth account entry
+    # Record or update Google auth account entry with tokens
     stmt_acc = select(AuthAccount).where(
         AuthAccount.user_id == user.id,
         AuthAccount.provider == "google"
     )
     acc_res = await db.execute(stmt_acc)
     existing_acc = acc_res.scalars().first()
+
+    expiry_dt = None
+    if token_data and getattr(token_data, "expires_in", None):
+        expiry_dt = datetime.now(timezone.utc) + timedelta(seconds=int(token_data.expires_in))
+
     if not existing_acc:
         await account_repo.create(db, obj_in={
             "user_id": user.id,
             "provider": "google",
             "provider_account_id": user_info.google_sub,
             "email": user.email,
+            "access_token": getattr(token_data, "access_token", None) if token_data else None,
+            "refresh_token": getattr(token_data, "refresh_token", None) if token_data else None,
+            "token_expiry": expiry_dt,
+            "scopes": getattr(token_data, "scope", None) if token_data else None,
         })
+    else:
+        if token_data:
+            if getattr(token_data, "access_token", None):
+                existing_acc.access_token = token_data.access_token
+            if getattr(token_data, "refresh_token", None):
+                existing_acc.refresh_token = token_data.refresh_token
+            if expiry_dt:
+                existing_acc.token_expiry = expiry_dt
+            if getattr(token_data, "scope", None):
+                existing_acc.scopes = token_data.scope
+            await db.commit()
 
     access_token = create_access_token(
         subject=user.id,
@@ -102,11 +127,11 @@ async def login_with_google(req: GoogleAuthRequest, db: AsyncSession = Depends(g
 @router.post("/google/code", response_model=TokenResponse)
 async def login_with_google_code(req: GoogleCodeAuthRequest, db: AsyncSession = Depends(get_db)):
     """Exchanges Google OAuth2 authorization code for tokens, then creates or returns session."""
-    is_valid, user_info, err_msg = await google_auth_service.exchange_code(req.code, req.redirect_uri)
-    if not is_valid or not user_info:
+    is_valid, token_data, err_msg = await google_auth_service.exchange_code(req.code, req.redirect_uri)
+    if not is_valid or not token_data or not token_data.user_info:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=err_msg or "Google code exchange failed")
 
-    return await _process_google_user(user_info, db)
+    return await _process_google_user(token_data.user_info, db, token_data=token_data)
 
 
 @router.post("/register", response_model=TokenResponse)
@@ -222,7 +247,7 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
 ):
     """Securely updates password after verifying old password."""
-    if not current_user.password_hash:
+    if not current_user.password_hash or current_user.password_hash.startswith("oauth_"):
         # OAuth user setting password for the first time
         current_user.password_hash = get_password_hash(req.new_password)
     else:

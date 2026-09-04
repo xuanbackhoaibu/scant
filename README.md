@@ -20,6 +20,26 @@
 
 ## 🚀 Hướng Dẫn Cài Đặt & Chạy
 
+### Chạy nhanh local demo
+
+```bash
+# Tạo/cập nhật dữ liệu demo, có thể chạy lại nhiều lần không bị trùng
+PYTHONPATH=apps/api ./apps/api/venv/bin/python apps/api/app/seed_sample.py
+
+# Chạy Backend API + Frontend Web cùng lúc
+bash scripts/dev.sh
+```
+
+- Web Application: [http://localhost:3050](http://localhost:3050)
+- API Docs: [http://localhost:8050/docs](http://localhost:8050/docs)
+
+Kiểm tra nhanh sau khi server đã lên:
+
+```bash
+bash scripts/smoke-local.sh
+bash scripts/smoke-demo-flow.sh
+```
+
 ### 0. Cấu hình biến môi trường
 
 Không commit file `.env.development`, `.env.production`, `.env.staging` hoặc API key thật lên Git.
@@ -29,6 +49,12 @@ cp .env.example .env.development
 ```
 
 Sau đó tự điền key thật vào `.env.development` trên máy local hoặc cấu hình qua secret manager khi deploy.
+
+Khi chạy production, bắt buộc đặt:
+
+- `JWT_SECRET`: chuỗi ngẫu nhiên mạnh, không dùng giá trị mẫu.
+- `CORS_ORIGINS`: JSON array các domain frontend được phép, ví dụ `["https://app.example.com"]`; không dùng `"*"`.
+- `DEBUG=false`.
 
 ### 1. Khởi chạy Backend API
 

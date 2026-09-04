@@ -8,11 +8,6 @@ export function middleware(request: NextRequest) {
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/register");
   const isPublicApi = pathname.startsWith("/api/auth") || pathname.startsWith("/auth/callback");
 
-  // If user is accessing auth page and already has an auth token, redirect to dashboard/home
-  if (isAuthPage && token) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
   // Protected paths that require authentication
   const isProtectedPath =
     pathname.startsWith("/projects") ||

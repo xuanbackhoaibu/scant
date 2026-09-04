@@ -49,6 +49,10 @@ class AuthAccount(Base):
     provider = Column(String(50), nullable=False)  # "google" | "password" | "github"
     provider_account_id = Column(String(255), nullable=False)  # google sub or email
     email = Column(String(255), nullable=False)
+    access_token = Column(Text, nullable=True)
+    refresh_token = Column(Text, nullable=True)
+    token_expiry = Column(DateTime(timezone=True), nullable=True)
+    scopes = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     last_login_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
 
@@ -94,6 +98,7 @@ class Project(Base):
     sources = relationship("Source", back_populates="project", cascade="all, delete-orphan")
     research_jobs = relationship("ResearchJob", back_populates="project", cascade="all, delete-orphan")
     datasets = relationship("Dataset", back_populates="project", cascade="all, delete-orphan")
+    image_assets = relationship("ImageAsset", back_populates="project", cascade="all, delete-orphan")
 
 
 class UploadedFile(Base):
@@ -195,6 +200,37 @@ class Report(Base):
     versions = relationship("ReportVersion", back_populates="report", cascade="all, delete-orphan")
     comments = relationship("Comment", back_populates="report", cascade="all, delete-orphan")
     exports = relationship("ExportRecord", back_populates="report", cascade="all, delete-orphan")
+    image_assets = relationship("ImageAsset", back_populates="report", cascade="all, delete-orphan")
+
+
+class ImageAsset(Base):
+    __tablename__ = "image_assets"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    report_id = Column(String(36), ForeignKey("reports.id", ondelete="CASCADE"), nullable=True, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    file_name = Column(String(255), nullable=False)
+    mime_type = Column(String(100), nullable=False)
+    file_size = Column(Integer, nullable=False)
+    width = Column(Integer, nullable=True)
+    height = Column(Integer, nullable=True)
+    storage_path = Column(String(1024), nullable=False)
+    thumbnail_path = Column(String(1024), nullable=True)
+    checksum_sha256 = Column(String(64), nullable=False, index=True)
+    source_type = Column(String(50), default="upload", nullable=False)
+    original_url = Column(String(2048), nullable=True)
+    source_domain = Column(String(255), nullable=True)
+    source_title = Column(String(512), nullable=True)
+    source_page_url = Column(String(2048), nullable=True)
+    license = Column(String(255), nullable=True)
+    attribution = Column(Text, nullable=True)
+    metadata_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+
+    project = relationship("Project", back_populates="image_assets")
+    report = relationship("Report", back_populates="image_assets")
+    user = relationship("User")
 
 
 class ReportSection(Base):
@@ -555,6 +591,5 @@ class UserQuota(Base):
     reset_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
-
 
 

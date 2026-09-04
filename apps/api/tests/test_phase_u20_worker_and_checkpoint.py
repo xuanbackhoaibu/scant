@@ -1,6 +1,6 @@
 import pytest
 from app.services.worker.checkpoint_engine import checkpoint_engine
-from app.services.worker.queue_manager import task_queue, TaskState
+from app.services.worker.queue_manager import ProductionTaskQueue, task_queue, TaskState
 
 
 def test_pipeline_checkpoint_engine():
@@ -62,3 +62,25 @@ async def test_task_queue_cancellation():
     cancelled = task_queue.cancel_task(task.task_id)
     assert cancelled is True
     assert task_queue.get_task(task.task_id).state == TaskState.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_task_queue_tracks_stage_progress_and_retryable_snapshot():
+    queue = ProductionTaskQueue()
+    task = await queue.enqueue(
+        task_name="auto_report",
+        payload={"project_id": "project-123"},
+        max_retries=2,
+    )
+
+    updated = queue.update_progress(task.task_id, stage="draft_sections", progress_pct=45)
+    snapshot = queue.get_task_snapshot(task.task_id)
+
+    assert updated is True
+    assert snapshot["id"] == task.task_id
+    assert snapshot["state"] == TaskState.QUEUED
+    assert snapshot["stage"] == "draft_sections"
+    assert snapshot["progress_pct"] == 45
+    assert snapshot["retry_count"] == 0
+    assert snapshot["max_retries"] == 2
+    assert snapshot["retryable"] is True

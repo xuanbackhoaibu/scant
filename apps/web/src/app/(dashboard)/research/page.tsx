@@ -8,16 +8,18 @@ export default function DeepResearchPage() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
     setSearching(true);
+    setError(null);
     try {
       const res = await api.research.searchWeb(query, 6);
       setResults(res.results || []);
-    } catch {
-      // empty
+    } catch (err: any) {
+      setError(err.message || "Không thể tìm kiếm nghiên cứu.");
     } finally {
       setSearching(false);
     }
@@ -50,6 +52,12 @@ export default function DeepResearchPage() {
           <span>Tìm kiếm sâu</span>
         </button>
       </form>
+
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-semibold text-rose-700">
+          {error}
+        </div>
+      )}
 
       {results.length > 0 && (
         <div className="space-y-3">

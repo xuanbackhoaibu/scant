@@ -15,6 +15,14 @@ class GoogleUserInfo(BaseModel):
     picture: Optional[str] = None
 
 
+class GoogleTokenData(BaseModel):
+    user_info: GoogleUserInfo
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    expires_in: Optional[int] = None
+    scope: Optional[str] = None
+
+
 class GoogleAuthService:
     """
     Google Identity Services (GIS) & OAuth 2.0 Real Authentication Engine.
@@ -87,9 +95,9 @@ class GoogleAuthService:
     @classmethod
     async def exchange_code(
         cls, code: str, redirect_uri: Optional[str] = None
-    ) -> Tuple[bool, Optional[GoogleUserInfo], Optional[str]]:
+    ) -> Tuple[bool, Optional[GoogleTokenData], Optional[str]]:
         """
-        Exchanges an OAuth 2.0 authorization code for Google tokens, then verifies and extracts user info.
+        Exchanges an OAuth 2.0 authorization code for Google tokens, then verifies and extracts user info and tokens.
         """
         if not code or not code.strip():
             return False, None, "Authorization code không hợp lệ hoặc bị trống"
@@ -122,26 +130,41 @@ class GoogleAuthService:
 
                 token_data = token_resp.json()
                 id_token = token_data.get("id_token")
-
-                if id_token:
-                    return await cls.verify_id_token(id_token, expected_client_id=client_id)
-
-                # Fallback to userinfo endpoint with access_token if id_token not returned
                 access_token = token_data.get("access_token")
-                if access_token:
+                refresh_token = token_data.get("refresh_token")
+                expires_in = token_data.get("expires_in")
+                scope = token_data.get("scope")
+
+                user_info = None
+                if id_token:
+                    is_valid, uinfo, err = await cls.verify_id_token(id_token, expected_client_id=client_id)
+                    if is_valid and uinfo:
+                        user_info = uinfo
+
+                # Fallback to userinfo endpoint with access_token if id_token not returned or user_info empty
+                if not user_info and access_token:
                     userinfo_resp = await client.get(
                         "https://www.googleapis.com/oauth2/v3/userinfo",
                         headers={"Authorization": f"Bearer {access_token}"},
                     )
                     if userinfo_resp.status_code == 200:
                         uinfo = userinfo_resp.json()
-                        return True, GoogleUserInfo(
+                        user_info = GoogleUserInfo(
                             google_sub=uinfo.get("sub"),
                             email=uinfo.get("email", "").lower().strip(),
                             email_verified=uinfo.get("email_verified", True),
                             name=uinfo.get("name") or uinfo.get("email", "").split("@")[0],
                             picture=uinfo.get("picture"),
-                        ), None
+                        )
+
+                if user_info:
+                    return True, GoogleTokenData(
+                        user_info=user_info,
+                        access_token=access_token,
+                        refresh_token=refresh_token,
+                        expires_in=expires_in,
+                        scope=scope,
+                    ), None
 
                 return False, None, "Không nhận được ID token hoặc Access token từ Google"
 

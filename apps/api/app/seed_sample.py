@@ -1,4 +1,5 @@
 import asyncio
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal, init_db
 from app.core.security import get_password_hash
@@ -9,68 +10,136 @@ from app.models.entities import (
 from app.services.exports.docx_exporter import docx_exporter
 
 
+DEMO_EMAIL = "demo@aireportstudio.pro"
+DEMO_PASSWORD = "DemoVIP123!"
+DEMO_WORKSPACE_SLUG = "vip-engineering"
+DEMO_TEMPLATE_NAME = "Mẫu Báo cáo Bài tập lớn CNTT - ĐH Bách Khoa Hà Nội"
+DEMO_PROJECT_NAME = "Xây dựng Website Thương mại Điện tử ASP.NET Core MVC"
+DEMO_REPORT_TITLE = "Báo cáo Đồ án: Xây dựng Website Thương mại Điện tử ASP.NET Core MVC"
+
+
+async def _one_or_none(db: AsyncSession, statement):
+    return (await db.execute(statement.limit(1))).scalar_one_or_none()
+
+
 async def seed_data():
     await init_db()
     async with AsyncSessionLocal() as db:
         # 1. Create Demo VIP User
-        user = User(
-            email="demo@aireportstudio.pro",
-            password_hash=get_password_hash("DemoVIP123!"),
-            name="Kỹ sư VIP Pro",
-            plan="enterprise",
-            is_active=True,
-        )
-        db.add(user)
-        await db.flush()
+        user = await _one_or_none(db, select(User).where(User.email == DEMO_EMAIL))
+        if user is None:
+            user = User(
+                email=DEMO_EMAIL,
+                password_hash=get_password_hash(DEMO_PASSWORD),
+                name="Kỹ sư VIP Pro",
+                plan="enterprise",
+                is_active=True,
+            )
+            db.add(user)
+            await db.flush()
+        else:
+            user.name = "Kỹ sư VIP Pro"
+            user.plan = "enterprise"
+            user.is_active = True
 
         # 2. Create Workspace
-        ws = Workspace(
-            user_id=user.id,
-            name="VIP Engineering Workspace",
-            slug="vip-engineering",
-            settings_json={},
+        ws = await _one_or_none(
+            db,
+            select(Workspace).where(
+                Workspace.user_id == user.id,
+                Workspace.slug == DEMO_WORKSPACE_SLUG,
+            ),
         )
-        db.add(ws)
-        await db.flush()
+        if ws is None:
+            ws = Workspace(
+                user_id=user.id,
+                name="VIP Engineering Workspace",
+                slug=DEMO_WORKSPACE_SLUG,
+                settings_json={},
+            )
+            db.add(ws)
+            await db.flush()
 
         # 3. Create Standard Templates
-        tpl_bkhn = Template(
-            user_id=user.id,
-            name="Mẫu Báo cáo Bài tập lớn CNTT - ĐH Bách Khoa Hà Nội",
-            category="academic",
-            description="Mẫu chuẩn khoa CNTT & TT: A4, lề trái 30mm, Times New Roman 13pt, Dãn dòng 1.5.",
-            is_system=True,
-            is_public=True,
-            organization="Đại học Bách Khoa Hà Nội",
+        tpl_bkhn = await _one_or_none(
+            db,
+            select(Template).where(
+                Template.user_id == user.id,
+                Template.name == DEMO_TEMPLATE_NAME,
+            ),
         )
-        db.add(tpl_bkhn)
-        await db.flush()
+        if tpl_bkhn is None:
+            tpl_bkhn = Template(
+                user_id=user.id,
+                name=DEMO_TEMPLATE_NAME,
+                category="academic",
+                description="Mẫu chuẩn khoa CNTT & TT: A4, lề trái 30mm, Times New Roman 13pt, Dãn dòng 1.5.",
+                is_system=True,
+                is_public=True,
+                organization="Đại học Bách Khoa Hà Nội",
+            )
+            db.add(tpl_bkhn)
+            await db.flush()
 
-        tpl_ver = TemplateVersion(
-            template_id=tpl_bkhn.id,
-            version_number=1,
-            styles_json={
-                "paper": "A4",
-                "margins": {"top": 20, "bottom": 20, "left": 30, "right": 20},
-                "font_family": "Times New Roman",
-                "font_size": 13,
-                "line_spacing": 1.5,
-            },
-            placeholders_json={"explicit": ["student_name", "student_id", "topic"], "detected": {}},
+        tpl_ver = await _one_or_none(
+            db,
+            select(TemplateVersion).where(
+                TemplateVersion.template_id == tpl_bkhn.id,
+                TemplateVersion.version_number == 1,
+            ),
         )
-        db.add(tpl_ver)
-        await db.flush()
+        if tpl_ver is None:
+            tpl_ver = TemplateVersion(
+                template_id=tpl_bkhn.id,
+                version_number=1,
+                styles_json={
+                    "paper": "A4",
+                    "margins": {"top": 20, "bottom": 20, "left": 30, "right": 20},
+                    "font_family": "Times New Roman",
+                    "font_size": 13,
+                    "line_spacing": 1.5,
+                },
+                placeholders_json={"explicit": ["student_name", "student_id", "topic"], "detected": {}},
+            )
+            db.add(tpl_ver)
+            await db.flush()
 
         # 4. Create Sample Academic Project (ASP.NET Core MVC E-Commerce)
-        proj = Project(
-            user_id=user.id,
-            workspace_id=ws.id,
-            name="Xây dựng Website Thương mại Điện tử ASP.NET Core MVC",
-            type="academic",
-            description="Đề tài bài tập lớn nghiên cứu kiến trúc Clean Architecture, xây dựng website bán hàng trực tuyến tích hợp cơ chế phân quyền, giỏ hàng, thanh toán và tối ưu hóa truy vấn cơ sở dữ liệu.",
-            settings_json={},
-            topic_details_json={
-                "topic_name": "Xây dựng Website Thương mại Điện tử ASP.NET Core MVC",
+        proj = await _one_or_none(
+            db,
+            select(Project).where(
+                Project.user_id == user.id,
+                Project.name == DEMO_PROJECT_NAME,
+            ),
+        )
+        if proj is None:
+            proj = Project(
+                user_id=user.id,
+                workspace_id=ws.id,
+                name=DEMO_PROJECT_NAME,
+                type="academic",
+                description="Đề tài bài tập lớn nghiên cứu kiến trúc Clean Architecture, xây dựng website bán hàng trực tuyến tích hợp cơ chế phân quyền, giỏ hàng, thanh toán và tối ưu hóa truy vấn cơ sở dữ liệu.",
+                settings_json={},
+                topic_details_json={
+                    "topic_name": DEMO_PROJECT_NAME,
+                    "subject": "Phát triển Ứng dụng Web & Kiến trúc Phần mềm",
+                    "major": "Công nghệ Thông tin",
+                    "university": "TRƯỜNG ĐẠI HỌC BÁCH KHOA HÀ NỘI",
+                    "instructor": "TS. Nguyễn Văn B",
+                    "student_name": "Nguyễn Văn A",
+                    "student_id": "20210001",
+                    "class_name": "K66-CNTT-01",
+                    "academic_year": "Hà Nội, 2026",
+                },
+            )
+            db.add(proj)
+            await db.flush()
+        else:
+            proj.workspace_id = ws.id
+            proj.settings_json = proj.settings_json or {}
+            proj.metadata_json = proj.metadata_json or {}
+            proj.topic_details_json = proj.topic_details_json or {
+                "topic_name": DEMO_PROJECT_NAME,
                 "subject": "Phát triển Ứng dụng Web & Kiến trúc Phần mềm",
                 "major": "Công nghệ Thông tin",
                 "university": "TRƯỜNG ĐẠI HỌC BÁCH KHOA HÀ NỘI",
@@ -79,10 +148,7 @@ async def seed_data():
                 "student_id": "20210001",
                 "class_name": "K66-CNTT-01",
                 "academic_year": "Hà Nội, 2026",
-            },
-        )
-        db.add(proj)
-        await db.flush()
+            }
 
         # 5. Create Verified Academic Sources
         src1 = Source(
@@ -118,28 +184,45 @@ async def seed_data():
             reliability_score=0.96,
             summary="JSON Web Token is a compact, URL-safe means of representing claims securely.",
         )
-        db.add_all([src1, src2, src3])
+        for source in [src1, src2, src3]:
+            existing_source = await _one_or_none(
+                db,
+                select(Source).where(
+                    Source.project_id == proj.id,
+                    Source.title == source.title,
+                ),
+            )
+            if existing_source is None:
+                db.add(source)
         await db.flush()
 
         # 6. Create Sample Report
-        report = Report(
-            project_id=proj.id,
-            template_version_id=tpl_ver.id,
-            title="Báo cáo Đồ án: Xây dựng Website Thương mại Điện tử ASP.NET Core MVC",
-            report_type="academic",
-            status="completed",
-            revision=1,
-            document_settings_json={
-                "paper": "A4",
-                "font_family": "Times New Roman",
-                "font_size": 13,
-                "line_spacing": 1.5,
-                "margins": {"top": 20, "bottom": 20, "left": 30, "right": 20},
-                "citation_style": "IEEE",
-            },
+        report = await _one_or_none(
+            db,
+            select(Report).where(
+                Report.project_id == proj.id,
+                Report.title == DEMO_REPORT_TITLE,
+            ),
         )
-        db.add(report)
-        await db.flush()
+        if report is None:
+            report = Report(
+                project_id=proj.id,
+                template_version_id=tpl_ver.id,
+                title=DEMO_REPORT_TITLE,
+                report_type="academic",
+                status="completed",
+                revision=1,
+                document_settings_json={
+                    "paper": "A4",
+                    "font_family": "Times New Roman",
+                    "font_size": 13,
+                    "line_spacing": 1.5,
+                    "margins": {"top": 20, "bottom": 20, "left": 30, "right": 20},
+                    "citation_style": "IEEE",
+                },
+            )
+            db.add(report)
+            await db.flush()
 
         # 7. Create Structured Chapters & Sections
         chapters_data = [
@@ -156,8 +239,15 @@ async def seed_data():
             ("CHƯƠNG 5: KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN", 1, 11, "Đề tài đã hoàn thành xuất sắc các mục tiêu đề ra và sẵn sàng cho việc tích hợp AI gợi ý sản phẩm trong tương lai."),
         ]
 
-        sections_list = []
+        existing_sections = (
+            await db.execute(select(ReportSection).where(ReportSection.report_id == report.id))
+        ).scalars().all()
+        sections_list = list(existing_sections)
+        existing_section_titles = {section.title for section in existing_sections}
+
         for title, level, pos, text in chapters_data:
+            if title in existing_section_titles:
+                continue
             sec = ReportSection(
                 report_id=report.id,
                 title=title,
@@ -189,6 +279,12 @@ async def seed_data():
         )
 
         print("✅ Sample Academic Project and VIP Templates seeded successfully!")
+        return {
+            "email": DEMO_EMAIL,
+            "password": DEMO_PASSWORD,
+            "project_id": proj.id,
+            "report_id": report.id,
+        }
 
 
 if __name__ == "__main__":

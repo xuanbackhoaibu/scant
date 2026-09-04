@@ -10,7 +10,7 @@ import {
   RefreshCw,
   ExternalLink,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, API_BASE } from "@/lib/api";
 
 interface ExportModalProps {
   reportId: string;
@@ -30,6 +30,13 @@ export function ExportModal({ reportId, isOpen, onClose }: ExportModalProps) {
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const resolveDownloadUrl = (downloadUrl?: string) => {
+    if (!downloadUrl) return "#";
+    if (downloadUrl.startsWith("http")) return downloadUrl;
+    const apiOrigin = API_BASE.replace(/\/api\/v1\/?$/, "");
+    return `${apiOrigin}${downloadUrl.startsWith("/") ? downloadUrl : `/${downloadUrl}`}`;
+  };
 
   const handleExport = async () => {
     setIsExporting(true);
@@ -185,7 +192,7 @@ export function ExportModal({ reportId, isOpen, onClose }: ExportModalProps) {
                 <span>Xuất tệp thành công!</span>
               </div>
               <a
-                href={exportResult.download_url}
+                href={resolveDownloadUrl(exportResult.download_url)}
                 target="_blank"
                 download
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold flex items-center gap-1.5 shadow-sm transition-colors"

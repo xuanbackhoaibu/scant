@@ -30,6 +30,7 @@ class QueueTask:
         self.idempotency_key = idempotency_key
         self.state = TaskState.QUEUED
         self.progress_percent = 0
+        self.stage = "queued"
         self.retry_count = 0
         self.max_retries = 3
         self.result: Optional[Dict[str, Any]] = None
@@ -37,6 +38,26 @@ class QueueTask:
         self.heartbeat_at = datetime.now(timezone.utc)
         self.created_at = datetime.now(timezone.utc)
         self.finished_at: Optional[datetime] = None
+
+    @property
+    def retryable(self) -> bool:
+        return self.state in {TaskState.QUEUED, TaskState.RUNNING, TaskState.RETRYING, TaskState.FAILED} and self.retry_count < self.max_retries
+
+    def to_snapshot(self) -> Dict[str, Any]:
+        return {
+            "id": self.task_id,
+            "task_name": self.task_name,
+            "state": self.state,
+            "stage": self.stage,
+            "progress_pct": self.progress_percent,
+            "retry_count": self.retry_count,
+            "max_retries": self.max_retries,
+            "retryable": self.retryable,
+            "error_message": self.error_message,
+            "created_at": self.created_at.isoformat(),
+            "heartbeat_at": self.heartbeat_at.isoformat(),
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+        }
 
 
 class ProductionTaskQueue:
@@ -82,6 +103,19 @@ class ProductionTaskQueue:
     def get_task(self, task_id: str) -> Optional[QueueTask]:
         return self._tasks.get(task_id)
 
+    def get_task_snapshot(self, task_id: str) -> Optional[Dict[str, Any]]:
+        task = self.get_task(task_id)
+        return task.to_snapshot() if task else None
+
+    def update_progress(self, task_id: str, stage: str, progress_pct: int) -> bool:
+        task = self._tasks.get(task_id)
+        if not task:
+            return False
+        task.stage = stage
+        task.progress_percent = max(0, min(100, int(progress_pct)))
+        task.heartbeat_at = datetime.now(timezone.utc)
+        return True
+
     def cancel_task(self, task_id: str) -> bool:
         task = self._tasks.get(task_id)
         if task and task.state in [TaskState.QUEUED, TaskState.RUNNING, TaskState.PAUSED, TaskState.RETRYING]:
@@ -109,6 +143,7 @@ class ProductionTaskQueue:
             return task
 
         task.state = TaskState.RUNNING
+        task.stage = "running"
         task.heartbeat_at = datetime.now(timezone.utc)
 
         try:
@@ -116,6 +151,7 @@ class ProductionTaskQueue:
             if asyncio.iscoroutine(res):
                 res = await res
             task.state = TaskState.COMPLETED
+            task.stage = "completed"
             task.progress_percent = 100
             task.result = res
             task.finished_at = datetime.now(timezone.utc)
@@ -123,9 +159,11 @@ class ProductionTaskQueue:
             if task.retry_count < task.max_retries:
                 task.retry_count += 1
                 task.state = TaskState.RETRYING
+                task.stage = "retrying"
                 await self._queue.put(task_id)
             else:
                 task.state = TaskState.FAILED
+                task.stage = "failed"
                 task.error_message = str(e)
                 task.finished_at = datetime.now(timezone.utc)
 

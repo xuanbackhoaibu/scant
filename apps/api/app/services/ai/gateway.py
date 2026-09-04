@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional
 from app.services.ai.types import AIRequest, AIResponse, AIUsage, AIProviderType
 from app.services.ai.model_router import model_router
 from app.services.ai.provider_factory import ai_factory
+from app.services.observability.metrics_collector import metrics_collector
 
 
 class AIGateway:
@@ -31,10 +32,12 @@ class AIGateway:
                 res = await primary_provider.generate(
                     prompt=request.prompt,
                     system_prompt=request.system_prompt,
+                    model=route.primary_model,
                     temperature=request.temperature,
                     response_format=request.response_format,
                 )
                 latency_ms = int((time.time() - start_time) * 1000)
+                metrics_collector.record_ai_request(latency_ms, success=True)
                 return cls._build_response(request, route.primary_provider.value, route.primary_model, res, latency_ms, False)
             except Exception as e:
                 last_error = e
@@ -48,13 +51,17 @@ class AIGateway:
             res = await fallback_provider.generate(
                 prompt=request.prompt,
                 system_prompt=request.system_prompt,
+                model=route.fallback_model,
                 temperature=request.temperature,
                 response_format=request.response_format,
             )
             latency_ms = int((time.time() - start_time) * 1000)
+            metrics_collector.record_ai_request(latency_ms, success=True)
             return cls._build_response(request, route.fallback_provider.value, route.fallback_model, res, latency_ms, True)
         except Exception as fallback_error:
             # If fallback also fails, raise clear gateway error
+            latency_ms = int((time.time() - start_time) * 1000)
+            metrics_collector.record_ai_request(latency_ms, success=False)
             raise RuntimeError(f"AI Gateway Error: Primary ({str(last_error)}) and Fallback ({str(fallback_error)}) both failed.")
 
     @classmethod

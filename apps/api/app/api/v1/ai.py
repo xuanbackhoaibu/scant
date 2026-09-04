@@ -175,10 +175,21 @@ async def chat_copilot(
 
     sources_raw = await source_repo.get_by_project(db, req.project_id)
     sources_payload = [{"title": s.title, "publisher": s.publisher, "summary": s.summary} for s in sources_raw]
+    report = await report_repo.get(db, req.report_id) if req.report_id else None
+    project_metadata = {
+        **(project.metadata_json or {}),
+        "project_id": project.id,
+        "project_name": project.name,
+        "project_type": project.type,
+        "project_description": project.description,
+        "topic_details": project.topic_details_json or {},
+        "report_title": report.title if report else None,
+        "report_type": report.report_type if report else None,
+    }
 
     return await copilot_service.chat(
         req=req,
-        project_metadata=project.metadata_json or {},
+        project_metadata=project_metadata,
         knowledge_docs=knowledge_docs,
         sources=sources_payload,
         section_title=section.title if section else None,
@@ -274,6 +285,89 @@ async def execute_agent_turn(
         active_section_id=req.active_section_id,
         selected_text=req.selected_text,
     )
+
+
+class HumanizeRequest(BaseModel):
+    text: str
+    style: Optional[str] = "academic"  # academic, executive, concise, natural
+    custom_instructions: Optional[str] = None
+
+
+@router.post("/humanize")
+async def humanize_text(
+    req: HumanizeRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Refines robotic phrasing into authentic, high-impact human prose."""
+    from app.services.quality.humanize_service import humanize_service
+    return await humanize_service.humanize(
+        text=req.text,
+        style=req.style or "academic",
+        custom_instructions=req.custom_instructions,
+    )
+
+
+class StylometryRequest(BaseModel):
+    text: str
+
+
+@router.post("/inspect-stylometry")
+async def inspect_stylometry(
+    req: StylometryRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Analyzes text for sentence burstiness, vocabulary entropy, and AI stylometry risks."""
+    from app.services.quality.plagiarism_stylometry_engine import plagiarism_stylometry_engine
+    return await plagiarism_stylometry_engine.analyze(req.text)
+
+
+class DiagramGenerateRequest(BaseModel):
+    context_text: str
+    diagram_type: Optional[str] = "flowchart"  # flowchart, erd, sequence, architecture, process, timeline
+    diagram_title: Optional[str] = "Sơ Đồ Quy Trình & Kiến Trúc"
+    detail_level: Optional[str] = "standard"
+
+
+@router.post("/diagram/generate")
+async def generate_diagram(
+    req: DiagramGenerateRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Generates an editable Mermaid.js diagram from text context."""
+    from app.services.visuals.diagram_agent import visual_diagram_agent, DiagramType
+    try:
+        dtype = DiagramType(req.diagram_type.lower()) if req.diagram_type else DiagramType.FLOWCHART
+    except Exception:
+        dtype = DiagramType.FLOWCHART
+
+    spec = await visual_diagram_agent.plan_and_generate_diagram(
+        context_text=req.context_text,
+        diagram_type=dtype,
+        detail_level=req.detail_level or "standard",
+        diagram_title=req.diagram_title or "Sơ Đồ Trực Quan",
+    )
+    return spec.model_dump()
+
+
+from fastapi import UploadFile, File, Form
+
+
+@router.post("/voice-to-report")
+async def voice_to_report(
+    audio: UploadFile = File(...),
+    topic_context: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    """Transcribes audio notes and generates structured report profile & outline."""
+    from app.services.ai.voice_service import voice_to_report_service
+    contents = await audio.read()
+    mime = audio.content_type or "audio/mp3"
+    return await voice_to_report_service.process_audio(
+        audio_bytes=contents,
+        mime_type=mime,
+        topic_context=topic_context,
+    )
+
 
 
 

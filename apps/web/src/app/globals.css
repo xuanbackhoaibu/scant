@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@config "../../tailwind.config.ts";
+@import "tailwindcss";
 
 @layer base {
   :root {
@@ -51,11 +50,152 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
   body {
-    @apply bg-background text-foreground antialiased selection:bg-primary/20;
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
+  }
+}
+
+@layer utilities {
+  .studio-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(120deg, rgba(34, 211, 238, 0.18), transparent 32%),
+      radial-gradient(circle at 88% 12%, rgba(125, 211, 252, 0.22), transparent 28%),
+      linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+    background-size: auto, auto, 36px 36px, 36px 36px;
+    pointer-events: none;
+  }
+
+  .studio-hero::after {
+    content: "";
+    position: absolute;
+    inset: auto -12% -45% 38%;
+    height: 260px;
+    border-radius: 999px;
+    background: rgba(34, 211, 238, 0.18);
+    filter: blur(70px);
+    pointer-events: none;
+  }
+
+  .effect-card {
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  }
+
+  .effect-card:hover {
+    transform: translateY(-2px);
+  }
+
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(203, 213, 225, 0.7);
+    backdrop-filter: blur(18px);
+  }
+
+  html.dark .glass-panel {
+    background: rgba(15, 23, 42, 0.78);
+    border-color: rgba(51, 65, 85, 0.75);
+  }
+
+  html.dark body {
+    background: #020617 !important;
+    color: #e2e8f0 !important;
+  }
+
+  html.dark .bg-white,
+  html.dark .bg-slate-50,
+  html.dark .bg-slate-50\/50,
+  html.dark .bg-slate-100,
+  html.dark .bg-slate-100\/70,
+  html.dark .bg-slate-100\/80 {
+    background-color: #0f172a !important;
+  }
+
+  html.dark .bg-indigo-50,
+  html.dark .bg-indigo-50\/50,
+  html.dark .bg-indigo-50\/60 {
+    background-color: rgba(49, 46, 129, 0.28) !important;
+  }
+
+  html.dark .bg-emerald-50,
+  html.dark .bg-emerald-50\/80 {
+    background-color: rgba(6, 78, 59, 0.32) !important;
+  }
+
+  html.dark .bg-red-50 {
+    background-color: rgba(127, 29, 29, 0.32) !important;
+  }
+
+  html.dark .border-slate-100,
+  html.dark .border-slate-200,
+  html.dark .border-slate-300,
+  html.dark .border-indigo-100,
+  html.dark .border-indigo-200,
+  html.dark .border-emerald-200,
+  html.dark .border-red-200 {
+    border-color: #334155 !important;
+  }
+
+  html.dark .text-slate-950,
+  html.dark .text-slate-900,
+  html.dark .text-slate-800,
+  html.dark .text-slate-700 {
+    color: #e2e8f0 !important;
+  }
+
+  html.dark .text-slate-600,
+  html.dark .text-slate-500,
+  html.dark .text-slate-400 {
+    color: #94a3b8 !important;
+  }
+
+  html.dark .text-indigo-700,
+  html.dark .text-indigo-600 {
+    color: #a5b4fc !important;
+  }
+
+  html.dark .text-emerald-900,
+  html.dark .text-emerald-800,
+  html.dark .text-emerald-700,
+  html.dark .text-emerald-600 {
+    color: #6ee7b7 !important;
+  }
+
+  html.dark input,
+  html.dark textarea,
+  html.dark select {
+    background-color: #020617 !important;
+    color: #e2e8f0 !important;
+    border-color: #334155 !important;
+  }
+
+  html.dark input::placeholder,
+  html.dark textarea::placeholder {
+    color: #64748b !important;
+  }
+
+  html.dark .a4-page,
+  html.dark .template-edit-page,
+  html.dark .canvas-view-white {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  html[data-theme="light"] body {
+    background: #f8fafc !important;
+    color: #0f172a !important;
   }
 }
 
@@ -76,6 +216,215 @@
 .dark .a4-page.canvas-view-white {
   background: #ffffff;
   color: #111827;
+}
+
+.template-edit-page {
+  width: min(210mm, 100%);
+  min-height: 297mm;
+  padding: clamp(24px, 5vw, 20mm) clamp(20px, 4vw, 20mm) clamp(36px, 5vw, 26mm) clamp(24px, 5vw, 30mm);
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 4px 25px rgba(15, 23, 42, 0.1), 0 0 1px rgba(15, 23, 42, 0.22);
+  border-radius: 2px;
+  position: relative;
+}
+
+.template-edit-page::after {
+  content: "Trang soạn thảo theo mẫu";
+  position: absolute;
+  left: 30mm;
+  right: 20mm;
+  bottom: 11mm;
+  text-align: center;
+  color: #64748b;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 10.5pt;
+}
+
+.template-prosemirror {
+  font-family: "Times New Roman", Times, serif;
+  font-size: 13pt;
+  line-height: 1.5;
+  color: #111827;
+}
+
+.template-prosemirror p {
+  margin: 0 0 8px 0;
+  text-align: justify;
+  text-indent: 12.7mm;
+}
+
+.template-prosemirror h1,
+.template-prosemirror h2,
+.template-prosemirror h3 {
+  font-family: "Times New Roman", Times, serif;
+  color: #111827;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.template-prosemirror h1 {
+  font-size: 14pt;
+  text-transform: uppercase;
+  margin: 0 0 12px 0;
+  page-break-before: always;
+}
+
+.template-prosemirror h1:first-child {
+  page-break-before: auto;
+}
+
+.template-prosemirror h2 {
+  font-size: 13pt;
+  margin: 12px 0 6px 0;
+}
+
+.template-prosemirror h3 {
+  font-size: 13pt;
+  margin: 8px 0 4px 0;
+  font-style: italic;
+}
+
+.template-prosemirror table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0 12px 0;
+  font-size: 12pt;
+}
+
+.template-prosemirror th,
+.template-prosemirror td {
+  border: 1px solid #64748b;
+  padding: 5px 7px;
+  vertical-align: top;
+}
+
+.template-prosemirror th p,
+.template-prosemirror td p {
+  text-indent: 0;
+  margin: 0;
+}
+
+.word-page {
+  width: 210mm;
+  min-height: 297mm;
+  box-sizing: border-box;
+}
+
+.template-prosemirror {
+  min-height: calc(297mm - 40mm);
+}
+
+.template-prosemirror img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 10px auto 12px auto;
+}
+
+.template-prosemirror figure.studio-image-node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0 14px;
+  text-indent: 0;
+}
+
+.template-prosemirror figure.studio-image-node[data-alignment="left"] {
+  align-items: flex-start;
+}
+
+.template-prosemirror figure.studio-image-node[data-alignment="center"] {
+  align-items: center;
+}
+
+.template-prosemirror figure.studio-image-node[data-alignment="right"] {
+  align-items: flex-end;
+}
+
+.template-prosemirror figure.studio-image-node img {
+  margin: 0;
+  border: 1px solid #e2e8f0;
+}
+
+.template-prosemirror figure.studio-image-node figcaption {
+  max-width: 100%;
+  color: #475569;
+  font-size: 11pt;
+  font-style: italic;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.template-prosemirror figure.studio-image-node.ProseMirror-selectednode img {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+.template-prosemirror ul,
+.template-prosemirror ol {
+  margin: 6px 0 10px 20px;
+  padding-left: 18px;
+}
+
+.template-prosemirror li p {
+  margin: 0;
+  text-indent: 0;
+}
+
+.template-prosemirror blockquote {
+  margin: 10px 0;
+  border-left: 3px solid #c7d2fe;
+  padding-left: 12px;
+  color: #475569;
+}
+
+.template-prosemirror hr {
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid #cbd5e1;
+}
+
+.template-prosemirror .docx-page-break,
+.template-prosemirror div[data-page-break] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+  break-after: page;
+  page-break-after: always;
+  color: #64748b;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 11px;
+  text-indent: 0;
+}
+
+.template-prosemirror .docx-page-break::before,
+.template-prosemirror .docx-page-break::after,
+.template-prosemirror div[data-page-break]::before,
+.template-prosemirror div[data-page-break]::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #cbd5e1;
+}
+
+@media print {
+  header,
+  aside,
+  .word-processor-ribbon {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .word-page {
+    width: 210mm;
+    min-height: 297mm;
+    box-shadow: none !important;
+  }
 }
 
 /* Custom Scrollbars */
