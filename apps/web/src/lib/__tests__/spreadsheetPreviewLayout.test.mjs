@@ -51,8 +51,8 @@ test("direct analysis panel does not duplicate the sheet range selector above th
 });
 
 test("projects shell prevents wide route content from creating page-level horizontal scroll", () => {
-  const source = readFileSync(resolve(appDir, "projects/layout.tsx"), "utf8");
+  const source = readFileSync(resolve(componentDir, "DashboardShell.tsx"), "utf8");
 
-  assert.match(source, /className="flex min-w-0 flex-1 overflow-x-hidden"/);
-  assert.match(source, /className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto"/);
+  assert.match(source, /className="min-w-0 flex-1 overflow-x-hidden"/);
+  assert.match(source, /"min-w-0 overflow-x-hidden overflow-y-auto transition-\[margin\] duration-200"/);
 });

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -25,21 +24,18 @@ import { isSidebarItemActive } from "@/lib/sidebarNav";
 import { useTranslation } from "@/i18n/I18nContext";
 import { useAuthStore } from "@/stores/useAuthStore";
 
-export function Sidebar() {
+type SidebarProps = {
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+};
+
+export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
   const pathname = usePathname() || "";
   const { t } = useTranslation();
   const { user } = useAuthStore();
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    const saved = localStorage.getItem("sidebar_collapsed");
-    if (saved) setCollapsed(saved === "true");
-  }, []);
 
   const toggleCollapse = () => {
-    const next = !collapsed;
-    setCollapsed(next);
-    localStorage.setItem("sidebar_collapsed", String(next));
+    onCollapsedChange(!collapsed);
   };
 
   const navItems = [
@@ -63,7 +59,7 @@ export function Sidebar() {
   return (
     <aside
       className={cn(
-        "sticky top-14 z-30 flex h-[calc(100vh-3.5rem)] select-none flex-col justify-between border-r border-slate-200 bg-white/82 backdrop-blur-xl transition-all duration-200 dark:border-slate-800 dark:bg-slate-950/82",
+        "fixed left-0 top-14 z-30 flex h-[calc(100vh-3.5rem)] select-none flex-col justify-between border-r border-slate-200 bg-white/82 backdrop-blur-xl transition-all duration-200 dark:border-slate-800 dark:bg-slate-950/82",
         collapsed ? "w-16" : "w-64"
       )}
     >
