@@ -41,7 +41,6 @@ import {
   createExcelAnalysisSnapshot,
   parseExcelAnalysisSnapshot,
 } from "@/lib/excelAnalysisSession";
-import { buildSheetDataSignals } from "@/lib/excelSheetSignals";
 
 export interface AnalysisLayer {
   id: string;
@@ -855,11 +854,6 @@ export default function ExcelAnalysisWorkspace({
     [file, fileId, dataSourceUrl, analysisBySheet]
   );
 
-  const sheetDataSignals = useMemo(
-    () => buildSheetDataSignals(sheetNames, analysisBySheet, visualWorkbook),
-    [analysisBySheet, sheetNames, visualWorkbook]
-  );
-
   const handleReadAllSheets = useCallback(async () => {
     if (isReadingAllSheets || sheetNames.length === 0) return;
     setIsReadingAllSheets(true);
@@ -1059,63 +1053,6 @@ export default function ExcelAnalysisWorkspace({
           </div>
         </div>
       </div>
-
-      {sheetDataSignals.length > 1 && (
-        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-slate-200 bg-slate-50/70 px-4 py-1.5 text-xs no-scrollbar">
-          <span className="shrink-0 text-xs font-semibold text-slate-500 mr-1">
-            {locale === "vi" ? "Trang tính" : "Sheets"}
-          </span>
-          {sheetDataSignals.map((signal) => {
-            const isActive = signal.name === activeSheetName;
-            const stateText = signal.isRead
-              ? signal.hasData
-                ? locale === "vi"
-                  ? "Đã đọc"
-                  : "Read"
-                : locale === "vi"
-                ? "Trống"
-                : "Empty"
-              : signal.hasData
-              ? locale === "vi"
-                ? "Có dữ liệu"
-                : "Has data"
-              : locale === "vi"
-              ? "Chưa đọc"
-              : "Unread";
-            const dotClass = signal.isRead
-              ? signal.hasData
-                ? "bg-emerald-500"
-                : "bg-slate-300"
-              : signal.hasData
-              ? "bg-amber-400"
-              : "bg-slate-300";
-            return (
-              <button
-                key={signal.name}
-                type="button"
-                onClick={() => handleSelectSheet(signal.name)}
-                className={`inline-flex h-7 shrink-0 items-center gap-2 rounded-md px-2.5 text-xs transition ${
-                  isActive
-                    ? "bg-white text-emerald-800 font-semibold border border-emerald-300 shadow-2xs"
-                    : "bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 border border-transparent"
-                }`}
-                title={`${signal.name}: ${stateText} · ${signal.totalRows.toLocaleString()} dòng × ${signal.totalColumns.toLocaleString()} cột`}
-              >
-                <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotClass}`} />
-                <span className="max-w-[140px] truncate">{signal.name}</span>
-                <span className="text-[11px] font-normal text-slate-400">
-                  {signal.totalRows.toLocaleString()}×{signal.totalColumns.toLocaleString()}
-                </span>
-                {signal.issueCount > 0 && (
-                  <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-semibold text-amber-800">
-                    {signal.issueCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       {/* 2. Main Body Split Layout (Spreadsheet ~65% | Analysis Panel ~35%) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 min-h-0 h-[clamp(650px,84vh,900px)] overflow-hidden">
@@ -1343,6 +1280,17 @@ export default function ExcelAnalysisWorkspace({
                   >
                     <RefreshCw className={`h-3 w-3 text-slate-400 ${isUndoing ? "animate-spin" : ""}`} />
                     <span>{locale === "vi" ? "Hoàn tác" : "Undo"}</span>
+                  </button>
+
+                  {/* Dismiss Banner Button */}
+                  <button
+                    type="button"
+                    onClick={() => setLastAnalysisResult(null)}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-amber-100/70 hover:text-slate-700 transition active:scale-95"
+                    title={locale === "vi" ? "Đóng thông báo này" : "Dismiss finding"}
+                    aria-label={locale === "vi" ? "Đóng thông báo này" : "Dismiss finding"}
+                  >
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>

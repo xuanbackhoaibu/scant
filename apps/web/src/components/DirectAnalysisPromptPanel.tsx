@@ -183,9 +183,9 @@ export default function DirectAnalysisPromptPanel({
           <button
             type="button"
             onClick={onOpenWorkspace}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-3 text-xs font-extrabold text-white shadow-md hover:bg-emerald-700 active:scale-95 transition shrink-0 group"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98] transition shrink-0 group"
           >
-            <span>{locale === "vi" ? "Tiếp theo: Mở màn phân tích →" : "Next: Open Analysis Workspace →"}</span>
+            <span>{locale === "vi" ? "Tiếp theo" : "Next"}</span>
             <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
           </button>
         </div>

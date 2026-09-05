@@ -9,7 +9,7 @@ test("DirectAnalysisPromptPanel renders sheet preview and Next button without se
   const source = readFileSync(resolve(componentDir, "DirectAnalysisPromptPanel.tsx"), "utf8");
   assert.match(source, /Đã đọc dữ liệu thành công/);
   assert.doesNotMatch(source, /Phạm vi phân tích/);
-  assert.match(source, /Tiếp theo: Mở màn phân tích →/);
+  assert.match(source, /Tiếp theo/);
 });
 
 test("ExcelAnalysisWorkspace renders docked prompt bar with suggestions and Analysis button", () => {

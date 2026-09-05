@@ -1491,7 +1491,6 @@ function UniversalProjectWizardContent() {
           <ArrowLeft className="h-4 w-4" />
         </button>
         <div className="min-w-0 flex-1">
-          {isDataWorkflow && mode === "auto" && <p className="mb-1 text-xs text-slate-500">{locale === "vi" ? "Khởi tạo tài liệu / Phân tích dữ liệu" : "Create document / Data analysis"}</p>}
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 leading-tight">{dataAnalysisBranch === "report" ? (locale === "vi" ? "Tạo báo cáo DOCX" : "Create DOCX report") : (locale === "vi" ? "Phân tích dữ liệu" : "Data analysis")}</h1>
           <p className="text-[14px] text-slate-500 mt-0.5">
             {dataAnalysisBranch === "report" ? (locale === "vi" ? "AI phân tích dữ liệu và tạo tài liệu Word" : "AI analyzes your data and creates a Word document") : (locale === "vi" ? "Phân tích Excel / Google Sheets / CSV bằng AI" : "Analyze Excel / Google Sheets / CSV with AI")}
@@ -1625,7 +1624,7 @@ function UniversalProjectWizardContent() {
                   {/* File Attachments / Data Source for DOCX Report */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-700">
-                      {isDataWorkflow ? (locale === "vi" ? "Bước 1: Chọn dữ liệu" : "Step 1: Choose data") : moduleAutoFields.fileLabel}
+                      {isDataWorkflow ? (locale === "vi" ? "Chọn dữ liệu" : "Choose data") : moduleAutoFields.fileLabel}
                       {isDataWorkflow && <span className="ml-1 text-red-500">*</span>}
                     </label>
                     <input
@@ -1835,7 +1834,7 @@ function UniversalProjectWizardContent() {
                   <div className="space-y-3">
                     <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <Wand2 className="h-4 w-4 text-indigo-600" />
-                      <span>{isDataWorkflow ? (locale === "vi" ? "Bước 2: Chọn mẫu Word (tùy chọn)" : "Step 2: Word template (optional)") : copy.createMode}</span>
+                      <span>{isDataWorkflow ? (locale === "vi" ? "Chọn mẫu Word (tùy chọn)" : "Word template (optional)") : copy.createMode}</span>
                     </p>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {[
@@ -2022,7 +2021,7 @@ function UniversalProjectWizardContent() {
                     </div>
                   )}
 
-                  {isDataWorkflow && <h2 className="text-sm font-semibold text-slate-900">{locale === "vi" ? "Bước 3: Thiết lập báo cáo" : "Step 3: Report settings"}</h2>}
+                  {isDataWorkflow && <h2 className="text-sm font-semibold text-slate-900">{locale === "vi" ? "Thiết lập báo cáo" : "Report settings"}</h2>}
                   <div className="grid gap-4 lg:grid-cols-[1fr_180px]">
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-3">
@@ -2109,7 +2108,7 @@ function UniversalProjectWizardContent() {
                         <div className="flex items-center justify-between">
                           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                             <Upload className="h-4 w-4 text-emerald-600" />
-                            <span>{locale === "vi" ? "Bước 1: Chọn nguồn dữ liệu bảng tính" : "Step 1: Choose spreadsheet data source"}</span>
+                            <span>{locale === "vi" ? "Chọn nguồn dữ liệu bảng tính" : "Choose spreadsheet data source"}</span>
                           </h3>
 
                         </div>
