@@ -1,5 +1,7 @@
 "use client";
 
+import { buildWorkbookScope } from "@/lib/workbookScope";
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   FileSpreadsheet,
@@ -18,7 +20,6 @@ import {
   Table as TableIcon,
   Layers,
   ChevronDown,
-  Layers3,
   Zap,
   Download,
   Filter,
@@ -235,7 +236,7 @@ export default function ExcelAnalysisWorkspace({
   locale = "vi",
 }: ExcelAnalysisWorkspaceProps) {
   // All available sheet names
-  const sheetNames = useMemo(() => {
+  const sheetNames = useMemo<string[]>(() => {
     if (visualWorkbook?.sheets && visualWorkbook.sheets.length > 0) {
       return visualWorkbook.sheets.map((s) => s.name);
     }
@@ -280,9 +281,13 @@ export default function ExcelAnalysisWorkspace({
   });
   const [isLoadingAnalysis, setIsLoadingAnalysis] = useState(false);
   const [isReadingAllSheets, setIsReadingAllSheets] = useState(false);
-  const [chatScopeMode, setChatScopeMode] = useState<"sheet" | "workbook">(
-    restoredSession?.chatScopeMode === "workbook" ? "workbook" : "sheet"
-  );
+  const [selectedAnalysisSheets, setSelectedAnalysisSheets] = useState<string[]>(() => {
+    const saved = restoredSession?.selectedAnalysisSheets?.filter((name: string) => sheetNames.includes(name));
+    return saved?.length ? saved : [...sheetNames];
+  });
+  const analysisScope = buildWorkbookScope(sheetNames, selectedAnalysisSheets);
+  const chatScopeMode = analysisScope?.type || "sheets";
+
   const [isAnalysisPanelOpen, setIsAnalysisPanelOpen] = useState(false);
   const [selectedChartIdx, setSelectedChartIdx] = useState(0);
   const [columnSearch, setColumnSearch] = useState("");
@@ -377,6 +382,7 @@ export default function ExcelAnalysisWorkspace({
       activeHighlightColor,
       analysisActionStatus,
       chatScopeMode,
+      selectedAnalysisSheets,
       analysisHistory,
       analysisBySheet,
       analysisLayersBySheet,
@@ -392,13 +398,14 @@ export default function ExcelAnalysisWorkspace({
     analysisLayersBySheet,
     analysisPrompt,
     chatScopeMode,
+    selectedAnalysisSheets,
     lastAnalysisResultBySheet,
     sessionStorageKey,
   ]);
 
   const handleSelectSheet = useCallback((sheetName: string) => {
     setActiveSheetName(sheetName);
-    setChatScopeMode("sheet");
+    setSelectedAnalysisSheets([sheetName]);
   }, []);
 
   const handleToggleLayerVisibility = useCallback((sheetName: string, layerId: string) => {
@@ -686,7 +693,7 @@ export default function ExcelAnalysisWorkspace({
   const handleRunAnalysisAction = useCallback(
     async (promptOverride?: string) => {
       const prompt = (promptOverride || analysisPrompt).trim();
-      if (!prompt || isRunningAnalysisAction) return;
+      if (!prompt || isRunningAnalysisAction || !analysisScope) return;
 
       // 1. Reset old analysis result on current sheet before running
       setLastAnalysisResultBySheet((prev) => ({
@@ -695,7 +702,8 @@ export default function ExcelAnalysisWorkspace({
       }));
 
       setIsRunningAnalysisAction(true);
-      setAnalysisActionStatus(locale === "vi" ? `Đang phân tích "${prompt}" trên ${activeSheetName}...` : `Analyzing "${prompt}" on ${activeSheetName}...`);
+      const targetLabel = analysisScope.type === "workbook" ? (locale === "vi" ? "toàn bộ workbook" : "the entire workbook") : analysisScope.type === "sheets" ? analysisScope.sheets.join(", ") : analysisScope.sheet;
+      setAnalysisActionStatus(locale === "vi" ? `Đang phân tích "${prompt}" trên ${targetLabel}...` : `Analyzing "${prompt}" on ${targetLabel}...`);
       try {
         const resolvedHighlightColor = resolvePromptHighlightColor(prompt, activeHighlightColor);
         setActiveHighlightColor(resolvedHighlightColor);
@@ -703,12 +711,13 @@ export default function ExcelAnalysisWorkspace({
         if (file) formData.append("file", file);
         if (fileId) formData.append("file_id", fileId);
         if (dataSourceUrl) formData.append("data_source_url", dataSourceUrl);
-        formData.append("sheet_name", activeSheetName);
+        formData.append("sheet_name", analysisScope.type === "sheet" ? analysisScope.sheet : activeSheetName);
+        formData.append("scope", JSON.stringify(analysisScope));
         formData.append("prompt", prompt);
-        const shouldUseSelectedRange = shouldUseSelectedRangeForAnalysis(prompt, selectedRange);
+        const shouldUseSelectedRange = analysisScope.type === "sheet" && analysisScope.sheet === activeSheetName && shouldUseSelectedRangeForAnalysis(prompt, selectedRange);
         if (shouldUseSelectedRange) formData.append("selected_range", selectedRange as string);
         formData.append("highlight_color", resolvedHighlightColor);
-        formData.append("conversation_id", `excel_analysis_${activeSheetName}`);
+        formData.append("conversation_id", `excel_analysis_${JSON.stringify(analysisScope)}`);
 
         const res = await api.data.workbookAnalysisAction(formData);
         const resolvedSheet = res.context?.sheet && res.context.sheet !== "workbook" && res.context.sheet !== "multiple_sheets"
@@ -721,17 +730,19 @@ export default function ExcelAnalysisWorkspace({
         }));
         setAnalysisHistory((prev) => [res.analysis_history_item || { prompt, sheet: resolvedSheet }, ...prev].slice(0, 8));
 
+        const layerSheets = new Set<string>((res.actions || []).map((action: { sheet?: string }) => action.sheet || resolvedSheet));
+        for (const layerSheet of layerSheets) {
         // Create and record an AnalysisLayer with the chosen / auto-rotated color
-        const existingLayers = analysisLayersBySheet[resolvedSheet] || [];
+        const existingLayers = analysisLayersBySheet[layerSheet] || [];
         const nextPreset = COLOR_ROTATION_PRESETS[existingLayers.length % COLOR_ROTATION_PRESETS.length];
         const chosenColor = resolvedHighlightColor || nextPreset.color;
         const preset = COLOR_ROTATION_PRESETS.find((p) => p.color === chosenColor) || nextPreset;
-        const matchedCells = (res.actions || []).flatMap((a: any) => a.cells || []);
+        const matchedCells = (res.actions || []).filter((action: any) => (action.sheet || resolvedSheet) === layerSheet).flatMap((action: any) => action.cells || []);
 
         if (matchedCells.length > 0) {
           const newLayer: AnalysisLayer = {
             id: `layer_${Date.now()}`,
-            sheet: resolvedSheet,
+            sheet: layerSheet,
             prompt,
             color: preset.color,
             colorName: preset.colorName,
@@ -751,11 +762,13 @@ export default function ExcelAnalysisWorkspace({
           };
           setAnalysisLayersBySheet((prev) => ({
             ...prev,
-            [resolvedSheet]: [newLayer, ...(prev[resolvedSheet] || [])],
+            [layerSheet]: [newLayer, ...(prev[layerSheet] || [])],
           }));
-          if (res.actions?.[0]?.autoScrollTo || matchedCells[0]) {
+          if (layerSheet === resolvedSheet && (res.actions?.[0]?.autoScrollTo || matchedCells[0])) {
             handleScrollToCell(res.actions?.[0]?.autoScrollTo || matchedCells[0]);
           }
+        }
+
         }
 
         setAnalysisActionStatus(res.answer || (locale === "vi" ? "Đã chạy phân tích thành công." : "Analysis complete."));
@@ -769,7 +782,7 @@ export default function ExcelAnalysisWorkspace({
         setIsRunningAnalysisAction(false);
       }
     },
-    [activeHighlightColor, activeSheetName, analysisLayersBySheet, analysisPrompt, dataSourceUrl, file, fileId, handleScrollToCell, isRunningAnalysisAction, locale, selectedRange]
+    [activeHighlightColor, activeSheetName, analysisLayersBySheet, analysisPrompt, analysisScope, dataSourceUrl, file, fileId, handleScrollToCell, isRunningAnalysisAction, locale, selectedRange]
   );
 
   useEffect(() => {
@@ -876,7 +889,7 @@ export default function ExcelAnalysisWorkspace({
       }
       const sheetList = sheetNamesWithData.slice(0, 4).join(", ");
       const moreCount = Math.max(sheetNamesWithData.length - 4, 0);
-      setChatScopeMode("workbook");
+      setSelectedAnalysisSheets([...sheetNames]);
       setAnalysisActionStatus(
         locale === "vi"
           ? `Đã đọc ${readCount}/${sheetNames.length} sheet. Có thông tin trong ${dataCount} sheet${sheetList ? `: ${sheetList}${moreCount ? ` +${moreCount}` : ""}` : "."}`
@@ -930,127 +943,127 @@ export default function ExcelAnalysisWorkspace({
   }, [currentAnalysis]);
 
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-300 bg-slate-50 shadow-lg font-sans overflow-hidden">
-      {/* 1. Header Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
-          {/* Back to Setup Button */}
-          {onBackToSetup && (
-            <button
-              type="button"
-              onClick={onBackToSetup}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-100 hover:text-slate-900 active:scale-95 transition shrink-0"
-              title={locale === "vi" ? "Quay lại bước cấu hình dữ liệu" : "Back to setup"}
-            >
-              <span>←</span>
-              <span className="hidden sm:inline">{locale === "vi" ? "Quay lại" : "Back"}</span>
-            </button>
-          )}
-
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-100">
-            <FileSpreadsheet className="h-5 w-5" />
-          </div>
-
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-900 text-sm truncate max-w-[200px] sm:max-w-xs md:max-w-md" title={fileName}>
+    <div className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs font-sans overflow-hidden">
+      {/* 1. Header Workspace (2 Tầng rõ ràng theo phong cách SaaS tối giản) */}
+      <div className="border-b border-slate-200 bg-white px-4 py-3 shrink-0 space-y-2.5">
+        {/* Tầng 1: Tên file & Workspace Badge */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {onBackToSetup && (
+              <button
+                type="button"
+                onClick={onBackToSetup}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-600 shadow-2xs hover:bg-slate-50 hover:text-slate-900 transition shrink-0"
+                title={locale === "vi" ? "Quay lại bước cấu hình dữ liệu" : "Back to setup"}
+              >
+                <span>←</span>
+              </button>
+            )}
+            <div className="min-w-0">
+              <h2 className="font-semibold text-slate-900 text-sm truncate" title={fileName}>
                 {fileName}
-              </span>
-              <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700 ring-1 ring-emerald-200 shrink-0">
-                Workspace Phân tích dữ liệu
-              </span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5 truncate">
+                {sheetNames.length} {locale === "vi" ? "trang tính" : "sheets"} • {locale === "vi" ? "Sheet hiện tại:" : "Active:"}{" "}
+                <span className="font-semibold text-slate-700">{activeSheetName}</span>
+              </p>
             </div>
-            <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-              {sheetNames.length} {locale === "vi" ? "trang tính" : "sheets"} · {locale === "vi" ? "Đang mở sheet:" : "Active:"}{" "}
-              <span className="font-bold text-emerald-700">{activeSheetName}</span>
-            </p>
           </div>
+
+          <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 shrink-0">
+            Workspace Phân tích dữ liệu
+          </span>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Sheet Selector Pills / Dropdown */}
-          <div className="relative">
-            <select
-              value={activeSheetName}
-              onChange={(e) => handleSelectSheet(e.target.value)}
-              className="appearance-none rounded-lg border border-slate-300 bg-white py-1.5 pl-3 pr-8 text-xs font-bold text-slate-800 shadow-sm hover:border-slate-400 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
-            >
-              {sheetNames.map((name: string) => (
-                <option key={name} value={name}>
-                  Sheet: {name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-          </div>
+        {/* Tầng 2: Controls & Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+          {/* Left: Sheet selector, Thống kê, Phân tích lại */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative">
+              <select
+                value={activeSheetName}
+                onChange={(e) => handleSelectSheet(e.target.value)}
+                className="h-8 appearance-none rounded-lg border border-slate-200 bg-white pl-2.5 pr-7 text-xs font-medium text-slate-700 shadow-2xs hover:border-slate-300 focus:border-emerald-500 focus:outline-none"
+              >
+                {sheetNames.map((name: string) => (
+                  <option key={name} value={name}>
+                    Sheet: {name}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3 w-3 text-slate-400" />
+            </div>
 
-          {/* Toggle Hide / Show Analysis Panel Button */}
-          <button
-            type="button"
-            onClick={() => setIsAnalysisPanelOpen((prev) => !prev)}
-            className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition shadow-2xs active:scale-95 ${
-              isAnalysisPanelOpen
-                ? "bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-300"
-                : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-300 shadow-sm"
-            }`}
-            title={
-              isAnalysisPanelOpen
-                ? (locale === "vi" ? "Đóng bảng thống kê & chi tiết (Ctrl+Shift+I)" : "Close statistics panel (Ctrl+Shift+I)")
-                : (locale === "vi" ? "Mở bảng thống kê & chi tiết (Ctrl+Shift+I)" : "Open statistics panel (Ctrl+Shift+I)")
-            }
-          >
-            <TrendingUp className={`h-3.5 w-3.5 ${isAnalysisPanelOpen ? "text-slate-500" : "text-emerald-600"}`} />
-            <span>
-              {isAnalysisPanelOpen
-                ? (locale === "vi" ? "✕ Đóng bảng thống kê" : "✕ Close Stats")
-                : (locale === "vi" ? "📊 Bảng thống kê & Chi tiết" : "📊 Statistics & Details")}
-            </span>
-          </button>
-
-          {/* Re-analyze Button */}
-          <button
-            type="button"
-            onClick={() => fetchSheetAnalysis(activeSheetName, true)}
-            disabled={isLoadingAnalysis || isReadingAllSheets}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm hover:bg-slate-50 active:scale-95 disabled:opacity-50 transition"
-            title={locale === "vi" ? "Phân tích lại sheet hiện tại" : "Re-analyze active sheet"}
-          >
-            <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${isLoadingAnalysis ? "animate-spin text-emerald-600" : ""}`} />
-            <span className="hidden sm:inline">{locale === "vi" ? "Phân tích lại" : "Re-analyze"}</span>
-          </button>
-
-          {/* Download Highlighted Excel Button */}
-          <button
-            type="button"
-            onClick={handleExportHighlightedExcel}
-            disabled={isExportingExcel}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 shadow-sm hover:bg-emerald-100 active:scale-95 disabled:opacity-50 transition"
-            title={locale === "vi" ? "Tải xuống file Excel (.xlsx) đã được bôi màu các ô kết quả" : "Download Excel with highlighted cells"}
-          >
-            <Download className={`h-3.5 w-3.5 text-emerald-700 ${isExportingExcel ? "animate-bounce" : ""}`} />
-            <span>{isExportingExcel ? (locale === "vi" ? "Đang xuất..." : "Exporting...") : (locale === "vi" ? "📥 Tải Excel đã bôi màu" : "📥 Export Excel")}</span>
-          </button>
-
-          {/* DOCX Generator Button */}
-          {onGenerateDocx && (
+            {/* Toggle Thống kê Button (Secondary) */}
             <button
               type="button"
-              onClick={() => onGenerateDocx(lastAnalysisResult || undefined)}
-              disabled={isGeneratingDocx}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 active:scale-95 disabled:opacity-50 transition"
+              onClick={() => setIsAnalysisPanelOpen((prev) => !prev)}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition shadow-2xs ${
+                isAnalysisPanelOpen
+                  ? "border-slate-300 bg-slate-100 text-slate-900"
+                  : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+              title={
+                isAnalysisPanelOpen
+                  ? (locale === "vi" ? "Đóng bảng thống kê (Ctrl+Shift+I)" : "Close statistics panel (Ctrl+Shift+I)")
+                  : (locale === "vi" ? "Mở bảng thống kê (Ctrl+Shift+I)" : "Open statistics panel (Ctrl+Shift+I)")
+              }
             >
-              <FileText className="h-4 w-4" />
-              <span>{isGeneratingDocx ? (locale === "vi" ? "Đang tạo DOCX..." : "Generating...") : (locale === "vi" ? "Sinh báo cáo DOCX" : "Generate DOCX")}</span>
+              <TrendingUp className={`h-3.5 w-3.5 ${isAnalysisPanelOpen ? "text-slate-500" : "text-emerald-600"}`} />
+              <span>
+                {isAnalysisPanelOpen
+                  ? (locale === "vi" ? "Đóng thống kê" : "Close Stats")
+                  : (locale === "vi" ? "Thống kê" : "Statistics")}
+              </span>
             </button>
-          )}
+
+            {/* Phân tích lại Button (Secondary) */}
+            <button
+              type="button"
+              onClick={() => fetchSheetAnalysis(activeSheetName, true)}
+              disabled={isLoadingAnalysis || isReadingAllSheets}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 transition"
+              title={locale === "vi" ? "Phân tích lại sheet hiện tại" : "Re-analyze active sheet"}
+            >
+              <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${isLoadingAnalysis ? "animate-spin text-emerald-600" : ""}`} />
+              <span className="hidden sm:inline">{locale === "vi" ? "Phân tích lại" : "Re-analyze"}</span>
+            </button>
+          </div>
+
+          {/* Right: Tải Excel (Secondary) & Sinh báo cáo (Primary CTA) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Tải Excel (Secondary) */}
+            <button
+              type="button"
+              onClick={handleExportHighlightedExcel}
+              disabled={isExportingExcel}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50 transition"
+              title={locale === "vi" ? "Tải xuống file Excel (.xlsx) đã được bôi màu các ô kết quả" : "Download Excel with highlighted cells"}
+            >
+              <Download className={`h-3.5 w-3.5 text-slate-500 ${isExportingExcel ? "animate-bounce" : ""}`} />
+              <span>{isExportingExcel ? (locale === "vi" ? "Đang xuất..." : "Exporting...") : (locale === "vi" ? "Tải Excel" : "Export Excel")}</span>
+            </button>
+
+            {/* Sinh báo cáo (Primary CTA) */}
+            {onGenerateDocx && (
+              <button
+                type="button"
+                onClick={() => onGenerateDocx(lastAnalysisResult || undefined)}
+                disabled={isGeneratingDocx}
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-xs font-semibold text-white shadow-xs hover:bg-emerald-700 active:scale-[0.98] disabled:opacity-50 transition"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                <span>{isGeneratingDocx ? (locale === "vi" ? "Đang tạo DOCX..." : "Generating...") : (locale === "vi" ? "Sinh báo cáo" : "Generate Report")}</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {sheetDataSignals.length > 1 && (
-        <div className="flex shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-200 bg-slate-50 px-4 py-2 text-xs no-scrollbar">
-          <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-            {locale === "vi" ? "Thông tin sheet:" : "Sheet info:"}
+        <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-slate-200 bg-slate-50/70 px-4 py-1.5 text-xs no-scrollbar">
+          <span className="shrink-0 text-xs font-semibold text-slate-500 mr-1">
+            {locale === "vi" ? "Trang tính" : "Sheets"}
           </span>
           {sheetDataSignals.map((signal) => {
             const isActive = signal.name === activeSheetName;
@@ -1081,29 +1094,20 @@ export default function ExcelAnalysisWorkspace({
                 key={signal.name}
                 type="button"
                 onClick={() => handleSelectSheet(signal.name)}
-                className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold transition ${
+                className={`inline-flex h-7 shrink-0 items-center gap-2 rounded-md px-2.5 text-xs transition ${
                   isActive
-                    ? "border-emerald-300 bg-white text-emerald-800 shadow-sm"
-                    : "border-slate-200 bg-white/80 text-slate-700 hover:border-emerald-200 hover:bg-white"
+                    ? "bg-white text-emerald-800 font-semibold border border-emerald-300 shadow-2xs"
+                    : "bg-transparent text-slate-600 hover:bg-slate-200/50 hover:text-slate-900 border border-transparent"
                 }`}
                 title={`${signal.name}: ${stateText} · ${signal.totalRows.toLocaleString()} dòng × ${signal.totalColumns.toLocaleString()} cột`}
               >
-                <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+                <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dotClass}`} />
                 <span className="max-w-[140px] truncate">{signal.name}</span>
-                <span className={`hidden rounded px-1.5 py-0.5 text-[10px] font-bold sm:inline ${
-                  signal.isRead && signal.hasData
-                    ? "bg-emerald-50 text-emerald-700"
-                    : signal.hasData
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-slate-100 text-slate-500"
-                }`}>
-                  {stateText}
-                </span>
-                <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
+                <span className="text-[11px] font-normal text-slate-400">
                   {signal.totalRows.toLocaleString()}×{signal.totalColumns.toLocaleString()}
                 </span>
                 {signal.issueCount > 0 && (
-                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                  <span className="rounded-full bg-amber-100 px-1.5 py-0.2 text-[10px] font-semibold text-amber-800">
                     {signal.issueCount}
                   </span>
                 )}
@@ -1237,69 +1241,59 @@ export default function ExcelAnalysisWorkspace({
             </div>
           )}
 
-          {/* Analysis Findings Banner directly above Spreadsheet */}
+          {/* Analysis Findings Banner directly above Spreadsheet (Insight banner nhỏ ~56-72px) */}
           {lastAnalysisResult && (
-            <div className="mb-2 shrink-0 rounded-xl border border-amber-300 bg-gradient-to-r from-amber-50 via-yellow-50/80 to-amber-50/50 p-2.5 shadow-2xs">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="flex items-start gap-2 min-w-0">
-                  <Sparkles className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="mb-2 shrink-0 rounded-xl border border-amber-200/80 bg-amber-50/40 px-3 py-2 shadow-2xs">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-h-[44px]">
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <Sparkles className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-xs font-bold text-amber-950">
-                        {lastAnalysisResult.title || (locale === "vi" ? "Kết quả phân tích:" : "Analysis Findings:")}
+                      <span className="text-xs font-semibold text-amber-950">
+                        ✨ {lastAnalysisResult.title || (locale === "vi" ? `Tổng quan ${activeSheetName}` : "Analysis Findings")}
                       </span>
                       {lastAnalysisResult.result?.duplicate_count !== undefined && (
-                        <span className="rounded bg-amber-200/90 px-1.5 py-0.2 text-[10px] font-bold text-amber-900">
-                          🔍 {lastAnalysisResult.result.duplicate_count} {locale === "vi" ? "nhóm trùng" : "duplicates"}
+                        <span className="rounded bg-amber-100/90 px-1.5 py-0.2 text-[10px] font-semibold text-amber-800">
+                          {lastAnalysisResult.result.duplicate_count} {locale === "vi" ? "nhóm trùng" : "duplicates"}
                         </span>
                       )}
                       {lastAnalysisResult.result?.missing_count !== undefined && (
-                        <span className="rounded bg-orange-200/90 px-1.5 py-0.2 text-[10px] font-bold text-orange-900">
-                          ⚠️ {lastAnalysisResult.result.missing_count} {locale === "vi" ? "ô thiếu" : "missing"}
+                        <span className="rounded bg-orange-100/90 px-1.5 py-0.2 text-[10px] font-semibold text-orange-800">
+                          {lastAnalysisResult.result.missing_count} {locale === "vi" ? "ô thiếu" : "missing"}
                         </span>
                       )}
                       {/* Evidence Source Chip */}
                       {lastAnalysisResult.evidence?.sheet && (
-                        <span className="rounded bg-emerald-100/90 px-1.5 py-0.2 text-[10px] font-bold text-emerald-900">
-                          📍 {locale === "vi" ? "Nguồn:" : "Source:"} {lastAnalysisResult.evidence.sheet}
+                        <span className="text-[11px] text-slate-500 font-normal">
+                          · 📍 {locale === "vi" ? "Nguồn:" : "Source:"} {lastAnalysisResult.evidence.sheet}
                           {lastAnalysisResult.evidence.ranges?.length ? ` · ${lastAnalysisResult.evidence.ranges.join(", ")}` : ""}
                         </span>
                       )}
-
                       {/* Google Sheets Sync Status Chip */}
                       {lastAnalysisResult.google_sync?.is_google_sheet && (
                         lastAnalysisResult.google_sync.synced_to_google_sheets && lastAnalysisResult.google_sync.verified_on_google_sheets ? (
-                          <span className="inline-flex items-center gap-1 rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900 ring-1 ring-emerald-300">
+                          <span className="inline-flex items-center gap-1 rounded bg-emerald-100/80 px-1.5 py-0.2 text-[10px] font-semibold text-emerald-800">
                             <Check className="h-3 w-3 text-emerald-700" />
-                            {locale === "vi" ? "✓ Đã tô màu trên Google Sheets gốc (Đã xác minh API)" : "✓ Synced & Verified on Google Sheets"}
+                            {locale === "vi" ? "Đã đồng bộ Sheets" : "Synced to Sheets"}
                           </span>
                         ) : (
-                          <div className="inline-flex items-center gap-1 flex-wrap">
-                            <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900 ring-1 ring-amber-300">
-                              ⚠️ {locale === "vi" ? "Chưa đồng bộ Google Sheets:" : "Google Sheets sync pending:"} {lastAnalysisResult.google_sync.google_sync_error || "Chưa cấp quyền ghi"}
+                          <div className="inline-flex items-center gap-1">
+                            <span className="text-[10px] text-amber-800">
+                              ⚠️ {locale === "vi" ? "Chưa đồng bộ Sheets" : "Sync pending"}
                             </span>
                             <button
                               type="button"
                               onClick={() => handleRetryGoogleSync(lastAnalysisResult)}
                               disabled={isRetryingGoogleSync}
-                              className="inline-flex items-center gap-1 rounded bg-blue-600 text-white px-2 py-0.5 text-[10px] font-bold hover:bg-blue-700 shadow-2xs transition active:scale-95 disabled:opacity-50"
-                              title={locale === "vi" ? "Thử đồng bộ lại màu vào Google Sheets ngay" : "Retry sync to Google Sheets"}
+                              className="rounded bg-blue-600 text-white px-1.5 py-0.2 text-[10px] font-semibold hover:bg-blue-700 transition"
                             >
-                              <RefreshCw className={`h-2.5 w-2.5 ${isRetryingGoogleSync ? "animate-spin" : ""}`} />
-                              <span>{isRetryingGoogleSync ? "Đang đồng bộ..." : "🔄 Đồng bộ ngay"}</span>
+                              {isRetryingGoogleSync ? "..." : "🔄"}
                             </button>
-                            <a
-                              href="/api/auth/google"
-                              className="inline-flex items-center gap-1 rounded bg-white text-slate-800 border border-slate-300 px-2 py-0.5 text-[10px] font-bold hover:bg-slate-100 transition shadow-2xs"
-                              title={locale === "vi" ? "Cấp quyền ghi Google Sheets để tự động tô màu trực tiếp" : "Grant Google Sheets write permission"}
-                            >
-                              🔑 Cấp quyền Google Sheets
-                            </a>
                           </div>
                         )
                       )}
                     </div>
-                    <p className="text-[11px] text-amber-900 mt-0.5 line-clamp-1 font-medium" title={lastAnalysisResult.answer}>
+                    <p className="text-xs text-amber-900 line-clamp-1 font-normal mt-0.5" title={lastAnalysisResult.answer}>
                       {renderInlineMarkdown(lastAnalysisResult.answer)}
                     </p>
                   </div>
@@ -1309,15 +1303,15 @@ export default function ExcelAnalysisWorkspace({
                   {/* Quick Cell Jump / Focus Buttons */}
                   {Array.isArray(lastAnalysisResult.result?.matched_cells) && lastAnalysisResult.result.matched_cells.length > 0 && (
                     <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-amber-800 font-bold">Focus:</span>
-                      {lastAnalysisResult.result.matched_cells.slice(0, 5).map((mc: any, idx: number) => {
+                      <span className="text-[10px] text-amber-800 font-semibold">Focus:</span>
+                      {lastAnalysisResult.result.matched_cells.slice(0, 4).map((mc: any, idx: number) => {
                         const addr = getMatchedCellAddress(mc);
                         return (
                           <button
                             key={idx}
                             type="button"
                             onClick={() => handleScrollToCell(addr)}
-                            className="rounded bg-white border border-amber-300 px-1.5 py-0.5 font-mono text-[10px] font-bold text-amber-900 hover:bg-amber-100 active:scale-95 transition shadow-2xs"
+                            className="rounded bg-white border border-amber-200 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-amber-900 hover:bg-amber-100/60 transition shadow-2xs"
                             title={locale === "vi" ? `Cuộn đến ô ${addr}` : `Scroll to ${addr}`}
                           >
                             {addr}
@@ -1332,11 +1326,11 @@ export default function ExcelAnalysisWorkspace({
                     type="button"
                     onClick={handlePushFindingToDocx}
                     disabled={isInsertingDocx}
-                    className="inline-flex items-center gap-1 rounded-md bg-emerald-600 text-white px-2 py-0.5 text-[10px] font-bold hover:bg-emerald-700 transition shadow-2xs active:scale-95 disabled:opacity-50"
+                    className="inline-flex h-7 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 text-xs font-semibold text-white hover:bg-emerald-700 transition shadow-2xs active:scale-95 disabled:opacity-50"
                     title={locale === "vi" ? "Chèn bảng phân tích và nhận xét này vào báo cáo Word DOCX" : "Insert this analysis finding into DOCX report"}
                   >
                     <FileText className="h-3 w-3" />
-                    <span>{isInsertingDocx ? (locale === "vi" ? "Đang chèn..." : "Inserting...") : (locale === "vi" ? "📄 Chèn vào Báo cáo Word" : "📄 Push to Word")}</span>
+                    <span>{isInsertingDocx ? (locale === "vi" ? "Đang chèn..." : "Inserting...") : (locale === "vi" ? "Chèn vào báo cáo" : "Push to Word")}</span>
                   </button>
 
                   {/* Undo Button */}
@@ -1344,10 +1338,10 @@ export default function ExcelAnalysisWorkspace({
                     type="button"
                     onClick={handleUndoLastAction}
                     disabled={isUndoing}
-                    className="inline-flex items-center gap-1 rounded-md bg-white border border-slate-300 px-2 py-0.5 text-[10px] font-bold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition shadow-2xs active:scale-95 disabled:opacity-50"
+                    className="inline-flex h-7 items-center gap-1 rounded-lg bg-white border border-slate-200 px-2 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition shadow-2xs active:scale-95 disabled:opacity-50"
                     title={locale === "vi" ? "Hoàn tác thao tác định dạng vừa thực hiện" : "Undo formatting action"}
                   >
-                    <RefreshCw className={`h-3 w-3 ${isUndoing ? "animate-spin" : ""}`} />
+                    <RefreshCw className={`h-3 w-3 text-slate-400 ${isUndoing ? "animate-spin" : ""}`} />
                     <span>{locale === "vi" ? "Hoàn tác" : "Undo"}</span>
                   </button>
                 </div>
@@ -1377,27 +1371,23 @@ export default function ExcelAnalysisWorkspace({
               onRangeSelect={setSelectedRange}
               scrollToCellAddress={scrollToCellAddress}
               allSheetsActive={chatScopeMode === "workbook"}
-              sheetTabsAction={
-                <button
-                  type="button"
-                  onClick={handleReadAllSheets}
-                  disabled={isReadingAllSheets || sheetNames.length === 0}
-                  className={
-                    chatScopeMode === "workbook"
-                      ? "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 shadow-sm transition hover:bg-emerald-100 active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1"
-                      : "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800 active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-1"
-                  }
-                  title={locale === "vi" ? "Đọc và cập nhật thông tin cho toàn bộ sheet" : "Read and refresh all sheets"}
-                >
-                  {isReadingAllSheets ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-emerald-700" /> : <Layers3 className="h-3.5 w-3.5 text-emerald-700" />}
-                  <span>{locale === "vi" ? "Đọc toàn bộ" : "Read all"}</span>
-                </button>
-              }
+
             />
           </div>
 
           {/* Bottom: Docked AI Prompt & Quick Action Bar */}
           <div className="mt-2.5 shrink-0 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50/90 via-teal-50/50 to-emerald-50/80 p-2.5 shadow-2xs space-y-2">
+            <fieldset className="min-w-0 space-y-2">
+              <legend className="text-xs font-semibold text-slate-700">{locale === "vi" ? "Bảng cần phân tích" : "Sheets to analyze"}</legend>
+              <div className="flex max-h-28 flex-wrap items-center gap-2 overflow-y-auto">
+                <button type="button" onClick={() => setSelectedAnalysisSheets([...sheetNames])} className="rounded-md border border-emerald-300 bg-white px-2 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-emerald-500">{locale === "vi" ? "Chọn tất cả" : "Select all"}</button>
+                {sheetNames.map((name) => <label key={name} className="flex max-w-full cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
+                  <input type="checkbox" checked={selectedAnalysisSheets.includes(name)} onChange={(event) => setSelectedAnalysisSheets((current) => event.target.checked ? [...current, name] : current.filter((sheet) => sheet !== name))} className="h-4 w-4 accent-emerald-600" />
+                  <span className="truncate">{name}</span>
+                </label>)}
+              </div>
+              <p className="text-[11px] text-slate-600">{analysisScope ? (locale === "vi" ? `Đã chọn ${selectedAnalysisSheets.length}/${sheetNames.length} bảng. Yêu cầu phân tích và chat AI dùng các bảng này.` : `${selectedAnalysisSheets.length}/${sheetNames.length} sheets selected for analysis and AI chat.`) : (locale === "vi" ? "Chọn ít nhất một bảng để phân tích." : "Select at least one sheet to analyze.")}</p>
+            </fieldset>
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 text-white shrink-0 shadow-2xs">
                 <Sparkles className="h-4 w-4" />
@@ -1424,7 +1414,7 @@ export default function ExcelAnalysisWorkspace({
               <button
                 type="button"
                 onClick={() => handleRunAnalysisAction()}
-                disabled={isRunningAnalysisAction || !analysisPrompt.trim()}
+                disabled={isRunningAnalysisAction || !analysisPrompt.trim() || !analysisScope}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 active:scale-95 disabled:opacity-50 transition shrink-0"
               >
                 {isRunningAnalysisAction ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
@@ -2173,14 +2163,14 @@ export default function ExcelAnalysisWorkspace({
               setHasOpenedChat(true);
               setIsChatOpen(true);
             }}
-            className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 text-xs font-bold text-white shadow-xl hover:from-emerald-700 hover:to-teal-700 active:scale-95 ring-4 ring-emerald-500/20 transition group"
+            className="inline-flex h-11 items-center gap-2 rounded-full bg-slate-900 px-4 text-xs font-semibold text-white shadow-md hover:bg-slate-800 active:scale-95 transition-all group"
             title={locale === "vi" ? "Mở trợ lý AI Copilot" : "Open AI Copilot"}
             aria-label="Mở AI Copilot"
           >
             <Sparkles className="h-4 w-4 text-amber-300 group-hover:rotate-12 transition-transform" />
             <span>{locale === "vi" ? "Hỏi AI" : "Ask AI"}</span>
             {Object.keys(cellHighlightsForActiveSheet).length > 0 && (
-              <span className="rounded-full bg-yellow-300 text-yellow-950 px-1.5 py-0.2 text-[9px] font-black">
+              <span className="rounded-full bg-emerald-500 text-white px-1.5 py-0.2 text-[9px] font-bold">
                 {Object.keys(cellHighlightsForActiveSheet).length}
               </span>
             )}
@@ -2204,7 +2194,7 @@ export default function ExcelAnalysisWorkspace({
             fileId={fileId}
             dataSourceUrl={dataSourceUrl}
             activeSheetName={activeSheetName}
-            chatScope={{ type: chatScopeMode, sheets: sheetNames }}
+            chatScope={analysisScope || { type: "sheets", sheets: [] }}
             totalRows={currentAnalysis?.overview?.total_rows || 0}
             totalCols={currentAnalysis?.overview?.total_columns || 0}
             selectedRange={selectedRange}

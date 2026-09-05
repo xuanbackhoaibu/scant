@@ -83,7 +83,7 @@ test("manual analysis prompts do not get constrained to a single selected cell",
   assert.match(source, /function shouldUseSelectedRangeForAnalysis/);
   assert.match(source, /selectedRange\.includes\(":"\)/);
   assert.match(source, /vùng chọn|vung chon|ô đang chọn|o dang chon/);
-  assert.match(source, /const shouldUseSelectedRange = shouldUseSelectedRangeForAnalysis\(prompt, selectedRange\)/);
+  assert.match(source, /const shouldUseSelectedRange = .*shouldUseSelectedRangeForAnalysis\(prompt, selectedRange\)/);
   assert.match(source, /if \(shouldUseSelectedRange\) formData\.append\("selected_range", selectedRange as string\)/);
   assert.doesNotMatch(source, /if \(selectedRange\) formData\.append\("selected_range", selectedRange\)/);
 });
@@ -93,7 +93,7 @@ test("chat prompts also avoid accidental single-cell selected range constraints"
 
   assert.match(source, /function shouldUseSelectedRangeForChat/);
   assert.match(source, /selectedRange\.includes\(":"\)/);
-  assert.match(source, /const shouldUseSelectedRange = shouldUseSelectedRangeForChat\(query, selectedRange\)/);
+  assert.match(source, /const shouldUseSelectedRange = .*shouldUseSelectedRangeForChat\(query, selectedRange\)/);
   assert.match(source, /if \(shouldUseSelectedRange\) \{/);
   assert.doesNotMatch(source, /if \(selectedRange\) \{\s*formData\.append\("selected_range", selectedRange\)/);
 });
@@ -170,7 +170,7 @@ test("setup analysis prompt calls Analysis Engine instead of seeding Chat AI", (
 
   assert.match(pageSource, /const handleRunSpreadsheetAnalysis/);
   assert.match(pageSource, /api\.data\.workbookAnalysisAction/);
-  assert.match(pageSource, /formData\.append\("scope", JSON\.stringify\(buildAnalysisScopePayload\(\)\)\)/);
+  assert.match(pageSource, /formData\.append\("scope", JSON\.stringify\(\{ type: "workbook" \}\)\)/);
   assert.match(pageSource, /initialAnalysisResult=\{interactiveAnalysisResult\}/);
   assert.doesNotMatch(pageSource, /setInteractiveInitialPrompt\(prompt\)/);
   assert.doesNotMatch(pageSource, /initialAnalysisPrompt=\{interactiveInitialPrompt\}/);
@@ -193,13 +193,11 @@ test("push to Word uses the latest workbook analysis result as the report reques
   assert.match(pageSource, /onGenerateDocx=\{handleCreateDocxFromInteractiveFinding\}/);
 });
 
-test("direct analysis panel exposes workbook, sheet, multi-sheet, and range scopes", () => {
-  const source = readFileSync(resolve(componentDir, "DirectAnalysisPromptPanel.tsx"), "utf8");
-
-  assert.match(source, /analysisScopeMode/);
-  assert.match(source, /selectedAnalysisSheets/);
-  assert.match(source, /analysisRange/);
-  assert.match(source, /Toàn bộ workbook/);
-  assert.match(source, /Chọn nhiều sheet/);
-  assert.match(source, /Sheet \/ vùng cụ thể/);
+test("scope selection lives in the analysis workspace, not upload setup", () => {
+  const setup = readFileSync(resolve(componentDir, "DirectAnalysisPromptPanel.tsx"), "utf8");
+  const workspace = readFileSync(resolve(componentDir, "ExcelAnalysisWorkspace.tsx"), "utf8");
+  assert.doesNotMatch(setup, /Phạm vi phân tích|analysisScopeMode|analysisRange/);
+  assert.match(workspace, /Bảng cần phân tích/);
+  assert.match(workspace, /Chọn tất cả/);
+  assert.match(workspace, /formData\.append\("scope", JSON\.stringify\(analysisScope\)\)/);
 });

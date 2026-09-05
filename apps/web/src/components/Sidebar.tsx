@@ -1,7 +1,8 @@
 "use client";
 
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   PlusCircle,
@@ -17,7 +18,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
-  Zap,
+  MoreVertical,
+  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isSidebarItemActive } from "@/lib/sidebarNav";
@@ -31,12 +33,35 @@ type SidebarProps = {
 
 export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
   const pathname = usePathname() || "";
+  const router = useRouter();
   const { t } = useTranslation();
-  const { user } = useAuthStore();
+  const { user, isAuthenticated, logout } = useAuthStore();
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
   const toggleCollapse = () => {
     onCollapsedChange(!collapsed);
   };
+
+  const handleLogout = () => {
+    setIsAccountMenuOpen(false);
+    logout();
+    router.push("/login");
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(event.target as Node)) {
+        setIsAccountMenuOpen(false);
+      }
+    }
+    if (isAccountMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isAccountMenuOpen]);
 
   const navItems = [
     { key: "home", href: "/", icon: LayoutDashboard, label: t("navigation.home") },
@@ -56,16 +81,20 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
     navItems.push({ key: "admin", href: "/admin", icon: Shield, label: t("navigation.admin") });
   }
 
+  const displayName = user?.name || "Kỹ sư VIP Pro";
+  const displayPlan = user?.plan ? (user.plan === "pro" ? "Enterprise" : user.plan) : "Enterprise";
+  const avatarLetter = displayName.charAt(0).toUpperCase() || "K";
+
   return (
     <aside
       className={cn(
-        "fixed left-0 top-14 z-30 flex h-[calc(100vh-3.5rem)] select-none flex-col justify-between border-r border-slate-200 bg-white/82 backdrop-blur-xl transition-all duration-200 dark:border-slate-800 dark:bg-slate-950/82",
-        collapsed ? "w-16" : "w-64"
+        "fixed left-0 top-14 z-30 flex h-[calc(100vh-3.5rem)] select-none flex-col justify-between border-r border-slate-200 bg-white transition-all duration-200 dark:border-slate-800 dark:bg-slate-950",
+        collapsed ? "w-16" : "w-[268px]"
       )}
     >
-      <div className="space-y-3 overflow-y-auto p-3">
+      <div className="space-y-2 overflow-y-auto p-3">
         {/* Workspace header & collapse trigger */}
-        <div className="flex items-center justify-between px-2 pt-1">
+        <div className="flex items-center justify-between px-2 pt-1 pb-1">
           {!collapsed && (
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
               {t("navigation.workspace")}
@@ -92,22 +121,22 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
                 prefetch={true}
                 title={collapsed ? item.label : undefined}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all",
+                  "flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors",
                   item.highlight && isActive
-                    ? "mb-2 bg-slate-950 text-white font-bold shadow-xs hover:bg-slate-800 dark:bg-cyan-300 dark:text-slate-950"
+                    ? "bg-slate-900 text-white font-semibold shadow-2xs hover:bg-slate-800 dark:bg-cyan-300 dark:text-slate-950"
                     : isActive
-                    ? "bg-cyan-50 text-cyan-800 font-semibold ring-1 ring-cyan-100 dark:bg-cyan-400/10 dark:text-cyan-100 dark:ring-cyan-400/20"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100",
+                    ? "bg-slate-900 text-white font-semibold shadow-2xs dark:bg-cyan-400/15 dark:text-cyan-200"
+                    : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-100",
                   collapsed && "justify-center px-0"
                 )}
               >
                 <Icon
                   className={cn(
-                    "h-4 w-4 shrink-0",
+                    "h-[18px] w-[18px] shrink-0",
                     item.highlight && isActive
                       ? "text-white"
                       : isActive
-                      ? "text-cyan-700 dark:text-cyan-200"
+                      ? "text-white dark:text-cyan-200"
                       : "text-slate-400"
                   )}
                 />
@@ -118,24 +147,72 @@ export function Sidebar({ collapsed, onCollapsedChange }: SidebarProps) {
         </nav>
       </div>
 
-      {/* Footer: Usage Quota & Profile */}
-      <div className="space-y-2 border-t border-slate-100 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-900/50">
-        {!collapsed ? (
-          <>
-            <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span className="flex items-center gap-1 font-medium">
-                <Zap className="h-3 w-3 text-amber-500" />
-                {t("navigation.usage")}
-              </span>
-              <span className="font-semibold text-slate-700">82%</span>
+      {/* Footer: Account Card at bottom of sidebar */}
+      <div className="relative border-t border-slate-200/80 p-2.5 dark:border-slate-800" ref={accountMenuRef}>
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={() => onCollapsedChange(false)}
+            className="flex w-full items-center justify-center p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+            title={`${displayName} - ${displayPlan}`}
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800">
+              {avatarLetter}
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
-              <div className="h-full w-[82%] rounded-full bg-cyan-500 dark:bg-cyan-300" />
-            </div>
-          </>
+          </button>
         ) : (
-          <div className="flex justify-center" title={t("navigation.usage")}>
-            <Zap className="h-4 w-4 text-amber-500" />
+          <div className="flex items-center justify-between gap-2.5 rounded-xl p-2 transition-colors hover:bg-slate-100/80 dark:hover:bg-slate-900">
+            <Link
+              href="/settings"
+              className="flex items-center gap-2.5 min-w-0 flex-1 group"
+              title={displayName}
+            >
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-indigo-700 font-bold text-xs border border-indigo-200 transition-transform group-hover:scale-105 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800">
+                {avatarLetter}
+              </div>
+              <div className="min-w-0 flex-1 text-left">
+                <div className="truncate text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 transition-colors">
+                  {displayName}
+                </div>
+                <div className="truncate text-[11px] text-slate-500 capitalize dark:text-slate-400">
+                  {displayPlan}
+                </div>
+              </div>
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => setIsAccountMenuOpen((prev) => !prev)}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200/60 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition-colors"
+              title="Menu tài khoản"
+              aria-label="Menu tài khoản"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Account Menu Dropdown */}
+        {isAccountMenuOpen && !collapsed && (
+          <div className="absolute bottom-[calc(100%+6px)] left-2.5 right-2.5 z-50 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg dark:border-slate-800 dark:bg-slate-950 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <Link
+              href="/settings"
+              onClick={() => setIsAccountMenuOpen(false)}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-900 transition-colors"
+            >
+              <Settings className="h-3.5 w-3.5 text-slate-500" />
+              <span>{t("navigation.settings")}</span>
+            </Link>
+            {isAuthenticated && (
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+              >
+                <LogOut className="h-3.5 w-3.5 text-rose-500" />
+                <span>{t("navigation.logout")}</span>
+              </button>
+            )}
           </div>
         )}
       </div>

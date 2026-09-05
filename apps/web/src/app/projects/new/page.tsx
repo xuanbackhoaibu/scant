@@ -46,9 +46,12 @@ import { formatUnknownError } from "@/lib/apiErrors";
 import { buildDatasetSourcePromptParts, hasDatasetSource } from "@/lib/datasetSource";
 import { VoiceRecorderModal } from "@/components/VoiceRecorderModal";
 import ExcelAnalysisWorkspace from "@/components/ExcelAnalysisWorkspace";
-import DirectAnalysisPromptPanel, { AnalysisScopeMode } from "@/components/DirectAnalysisPromptPanel";
+import DirectAnalysisPromptPanel from "@/components/DirectAnalysisPromptPanel";
 import { resolveSelectedSheetName } from "@/lib/directAnalysisPreview";
 import { useTranslation } from "@/i18n/I18nContext";
+import { DataAnalysisModeSelection, type DataAnalysisMode } from "@/components/DataAnalysisModeSelection";
+import { readAnalysisMode, analysisModeUrl } from "@/lib/dataAnalysisNavigation";
+import { useModeStore } from "@/stores/useModeStore";
 
 interface CustomFieldItem {
   key: string;
@@ -574,9 +577,6 @@ function UniversalProjectWizardContent() {
   const [dataSourceUrl, setDataSourceUrl] = useState("");
   const [dataSheetRange, setDataSheetRange] = useState("");
   const [dataAnalysisRequest, setDataAnalysisRequest] = useState("");
-  const [analysisScopeMode, setAnalysisScopeMode] = useState<AnalysisScopeMode>("workbook");
-  const [selectedAnalysisSheets, setSelectedAnalysisSheets] = useState<string[]>([]);
-  const [analysisRange, setAnalysisRange] = useState("");
   const [isRunningInitialAnalysis, setIsRunningInitialAnalysis] = useState(false);
   const [interactiveAnalysisResult, setInteractiveAnalysisResult] = useState<any | null>(null);
   const [dataPreview, setDataPreview] = useState<any | null>(null);
@@ -604,6 +604,13 @@ function UniversalProjectWizardContent() {
   const [interactivePreferredSheet, setInteractivePreferredSheet] = useState("");
   const [dataPreviewLoadingStep, setDataPreviewLoadingStep] = useState("");
 
+  useEffect(() => {
+    if (!autoFiles.length && !dataSourceUrl && !autoTemplateFile && !autoRequirements && !dataAnalysisRequest) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [autoFiles, dataSourceUrl, autoTemplateFile, autoRequirements, dataAnalysisRequest]);
+
   // BULK BATCH STATE
   const [bulkFile, setBulkFile] = useState<File | null>(null);
   const [bulkPreviewRows, setBulkPreviewRows] = useState<any[]>([]);
@@ -615,7 +622,13 @@ function UniversalProjectWizardContent() {
   const [step, setStep] = useState(initialMode === "advanced" ? 1 : 1);
   const [projectType, setProjectType] = useState(initialType);
   const isDataWorkflow = projectType === "data_analysis" || initialWorkflow === "data";
-  const [dataAnalysisBranch, setDataAnalysisBranch] = useState<"interactive" | "report">("interactive");
+  const selectedAnalysisMode = readAnalysisMode(searchParams ?? new URLSearchParams());
+  const dataAnalysisBranch = selectedAnalysisMode === "direct-analysis" ? "interactive" : selectedAnalysisMode === "docx-report" ? "report" : null;
+  const setDataAnalysisBranch = (branch: "interactive" | "report" | null) => {
+    if (!guardAutoJobContextChange()) return;
+    const nextMode: DataAnalysisMode | null = branch === "interactive" ? "direct-analysis" : branch === "report" ? "docx-report" : null;
+    window.history.pushState(null, "", analysisModeUrl(searchParams?.toString() ?? "", nextMode));
+  };
   const [isAnalyzingIntent, setIsAnalyzingIntent] = useState(false);
   const [topicName, setTopicName] = useState("Báo cáo Chiến lược Doanh nghiệp 2026");
   const [description, setDescription] = useState(initialPrompt || "Báo cáo phân tích thực trạng và xây dựng chiến lược phát triển tối ưu.");
@@ -676,6 +689,26 @@ function UniversalProjectWizardContent() {
     );
     return false;
   };
+
+  const registerModeChangeHandler = useModeStore((state) => state.registerModeChangeHandler);
+
+  useEffect(() => {
+    useModeStore.setState({ mode });
+  }, [mode]);
+
+  useEffect(() => {
+    registerModeChangeHandler((nextMode) => {
+      if (nextMode === "advanced" || nextMode === "bulk") {
+        if (!guardAutoJobContextChange()) return false;
+      }
+      setMode(nextMode);
+      if (nextMode === "advanced") {
+        setStep(1);
+      }
+      return true;
+    });
+    return () => registerModeChangeHandler(null);
+  }, [guardAutoJobContextChange, registerModeChangeHandler]);
 
   useEffect(() => {
     if (restoredAutoJobRef.current || typeof window === "undefined") return;
@@ -822,33 +855,12 @@ function UniversalProjectWizardContent() {
     setIsInteractiveWorkspaceOpen(false);
     setInteractiveAnalysisResult(null);
     setInteractivePreferredSheet("");
-    setSelectedAnalysisSheets([]);
-    setAnalysisScopeMode("workbook");
-    setAnalysisRange("");
     setSelectedDataSheetName("");
     setIsDataInfoHidden(false);
     setError(null);
     if (autoFileInputRef.current) {
       autoFileInputRef.current.value = "";
     }
-  };
-
-  const buildAnalysisScopePayload = () => {
-    if (analysisScopeMode === "workbook") {
-      return { type: "workbook" };
-    }
-    if (analysisScopeMode === "sheets") {
-      const sheets = selectedAnalysisSheets.length ? selectedAnalysisSheets : [selectedDataSheetName].filter(Boolean);
-      return { type: "sheets", sheets };
-    }
-    if (analysisScopeMode === "range") {
-      return {
-        type: "range",
-        sheet: selectedDataSheetName || dataPreview?.sheets?.[0]?.name || "Sheet1",
-        range: analysisRange.trim(),
-      };
-    }
-    return { type: "sheet", sheet: selectedDataSheetName || dataPreview?.sheets?.[0]?.name || "Sheet1" };
   };
 
   const handleRunSpreadsheetAnalysis = async (prompt: string, preferredSheet?: string) => {
@@ -868,10 +880,7 @@ function UniversalProjectWizardContent() {
       }
       formData.append("sheet_name", preferredSheet || selectedDataSheetName || dataPreview?.sheets?.[0]?.name || "Sheet1");
       formData.append("prompt", request);
-      if (analysisScopeMode === "range" && analysisRange.trim()) {
-        formData.append("selected_range", analysisRange.trim());
-      }
-      formData.append("scope", JSON.stringify(buildAnalysisScopePayload()));
+      formData.append("scope", JSON.stringify({ type: "workbook" }));
       formData.append("conversation_id", `excel_analysis_setup_${Date.now()}`);
 
       const result = await api.data.workbookAnalysisAction(formData);
@@ -955,14 +964,13 @@ function UniversalProjectWizardContent() {
         });
         return;
       }
-      if (dataSheetRange.trim()) fd.append("sheet_range", dataSheetRange.trim());
+      // Load every sheet; analysis selection belongs to the workspace.
       if (dataAnalysisRequest.trim()) fd.append("analysis_request", dataAnalysisRequest.trim());
       const preview = await api.data.previewUpload(fd);
       if (preview && !preview.error) {
         setDataPreview(preview);
         const resolvedSheet = resolveSelectedSheetName(preview, previousSelectedSheet, dataSheetRange);
         setSelectedDataSheetName(resolvedSheet);
-        setSelectedAnalysisSheets([resolvedSheet].filter(Boolean));
         setDataPreviewConfirmed(true);
       } else {
         setDataPreview({
@@ -1439,6 +1447,11 @@ function UniversalProjectWizardContent() {
   const openModuleScreen = (typeId: string) => {
     if (!guardAutoJobContextChange()) return;
 
+    if (typeId === projectType) { setMode("auto"); return; }
+    if ((autoFiles.length || dataSourceUrl || autoTemplateFile || autoRequirements || dataAnalysisRequest) && !window.confirm(locale === "vi"
+      ? "Đổi module sẽ xóa dữ liệu và thiết lập hiện tại. Bạn có muốn tiếp tục?"
+      : "Changing modules will clear the current data and settings. Continue?")) return;
+
     const moduleCopy = MODULE_SCREEN_COPY[locale][typeId as keyof typeof MODULE_SCREEN_COPY[typeof locale]];
     setProjectType(typeId);
     setMode("auto");
@@ -1464,65 +1477,39 @@ function UniversalProjectWizardContent() {
   };
 
   return (
-    <div className="mx-auto min-w-0 w-full max-w-[1600px] overflow-x-hidden px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-      {/* Header & Mode Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-5">
-        <div className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={() => router.push("/")}
-            className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
-            title={copy.home}
-            aria-label={copy.home}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">{copy.title}</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              {copy.subtitle}
-            </p>
-          </div>
+    <div className="mx-auto min-w-0 w-full max-w-[1600px] overflow-x-hidden px-4 py-4 sm:px-6 lg:px-8 space-y-4">
+      {/* Data workspaces keep their contextual header; other flows start at their content. */}
+      {isDataWorkflow && mode === "auto" && (
+      <div className="flex flex-wrap items-center gap-3 pb-1">
+        <button
+          type="button"
+          onClick={() => isDataWorkflow && mode === "auto" && selectedAnalysisMode ? setDataAnalysisBranch(null) : router.push("/")}
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 shadow-2xs"
+          title={isDataWorkflow && selectedAnalysisMode ? copy.back : copy.home}
+          aria-label={isDataWorkflow && selectedAnalysisMode ? copy.back : copy.home}
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <div className="min-w-0 flex-1">
+          {isDataWorkflow && mode === "auto" && <p className="mb-1 text-xs text-slate-500">{locale === "vi" ? "Khởi tạo tài liệu / Phân tích dữ liệu" : "Create document / Data analysis"}</p>}
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 leading-tight">{dataAnalysisBranch === "report" ? (locale === "vi" ? "Tạo báo cáo DOCX" : "Create DOCX report") : (locale === "vi" ? "Phân tích dữ liệu" : "Data analysis")}</h1>
+          <p className="text-[14px] text-slate-500 mt-0.5">
+            {dataAnalysisBranch === "report" ? (locale === "vi" ? "AI phân tích dữ liệu và tạo tài liệu Word" : "AI analyzes your data and creates a Word document") : (locale === "vi" ? "Phân tích Excel / Google Sheets / CSV bằng AI" : "Analyze Excel / Google Sheets / CSV with AI")}
+          </p>
         </div>
-
-        {/* Mode Toggle */}
-        <div className="flex bg-slate-100 p-1 rounded-xl self-start sm:self-auto border border-slate-200">
-	          <button
-	            onClick={() => setMode("auto")}
-	            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              mode === "auto" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            <Zap className="h-3.5 w-3.5" />
-            <span>{copy.modes.auto}</span>
-          </button>
-	          <button
-	            onClick={() => {
-	              if (!guardAutoJobContextChange()) return;
-	              setMode("advanced");
-	              setStep(1);
-	            }}
-	            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              mode === "advanced" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            <Layers className="h-3.5 w-3.5" />
-            <span>{copy.modes.advanced}</span>
-          </button>
-	          <button
-	            onClick={() => {
-	              if (!guardAutoJobContextChange()) return;
-	              setMode("bulk");
-	            }}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              mode === "bulk" ? "bg-white text-indigo-600 shadow-xs" : "text-slate-500 hover:text-slate-900"
-            }`}
-          >
-            <Table className="h-3.5 w-3.5" />
-            <span>{copy.modes.bulk}</span>
-          </button>
-        </div>
+        {isDataWorkflow && mode === "auto" && <div className="flex w-full flex-wrap justify-end gap-2 sm:w-auto">
+          {selectedAnalysisMode && <button type="button" onClick={() => setDataAnalysisBranch(null)} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-500">{locale === "vi" ? "Đổi chế độ" : "Change mode"}</button>}
+          <button type="button" onClick={() => { if (guardAutoJobContextChange()) setMode("advanced"); }} className="rounded-md px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-emerald-500">{locale === "vi" ? "Đổi module" : "Change module"}</button>
+        </div>}
       </div>
+      )}
+
+      {mode === "auto" && isDataWorkflow && !selectedAnalysisMode && !activeJobId && <DataAnalysisModeSelection locale={locale} onSelect={(next) => setDataAnalysisBranch(next === "direct-analysis" ? "interactive" : "report")} />}
+      {mode === "auto" && isDataWorkflow && (dataAnalysisBranch === "report" || activeJobId) && (
+        <ol aria-label={locale === "vi" ? "Tiến trình báo cáo" : "Report progress"} className="grid grid-cols-2 gap-x-4 gap-y-2 border-b border-slate-200 pb-3 text-xs text-slate-600 sm:grid-cols-3 lg:grid-cols-6">
+          {(locale === "vi" ? ["Chọn dữ liệu", "Mẫu Word (tùy chọn)", "Thiết lập báo cáo", "AI phân tích & tạo nội dung", "Xem trước", "Xuất DOCX"] : ["Choose data", "Word template (optional)", "Report settings", "AI analysis & writing", "Preview", "Export DOCX"]).map((label, index) => <li key={label} className="flex items-start gap-2"><span className="font-semibold text-emerald-700">{index + 1}.</span>{label}</li>)}
+        </ol>
+      )}
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs flex items-center gap-2">
@@ -1531,10 +1518,9 @@ function UniversalProjectWizardContent() {
         </div>
       )}
 
-      {/* MODE 1: ONE-CLICK AUTO REPORT */}
-      {mode === "auto" && (
-        isDataWorkflow && dataAnalysisBranch === "interactive" && isInteractiveWorkspaceOpen && dataPreview && !dataPreview.error ? (
-          <div data-auto-create-shell className="w-full min-w-0 overflow-hidden">
+      {/* Keep the spreadsheet mounted while switching modes so unsaved workspace edits survive. */}
+      {isInteractiveWorkspaceOpen && dataPreview && !dataPreview.error && (
+          <div hidden={mode !== "auto" || !isDataWorkflow || dataAnalysisBranch !== "interactive"} data-auto-create-shell className="w-full min-w-0 overflow-hidden">
             <ExcelAnalysisWorkspace
               fileName={dataPreview.file_name || autoFiles[0]?.name || "Bảng tính dữ liệu"}
               file={autoFiles[0] || null}
@@ -1551,17 +1537,20 @@ function UniversalProjectWizardContent() {
               locale={locale}
             />
           </div>
-        ) : (
-          <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-xs sm:p-6">
+      )}
+      {/* MODE 1: ONE-CLICK AUTO REPORT */}
+      {mode === "auto" && (!isDataWorkflow || selectedAnalysisMode || activeJobId) && !(isDataWorkflow && dataAnalysisBranch === "interactive" && isInteractiveWorkspaceOpen && dataPreview && !dataPreview.error) && (
+          <div className={isDataWorkflow ? "min-w-0" : "min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-xs sm:p-6"}>
             {!activeJobId ? (
               <div
                 data-auto-create-shell
                 className={`grid min-w-0 gap-6 overflow-hidden ${
-                  isDataWorkflow && dataAnalysisBranch === "interactive"
-                    ? "2xl:grid-cols-[300px_minmax(0,1fr)]"
+                  isDataWorkflow
+                    ? (dataAnalysisBranch === "report" ? "lg:grid-cols-[minmax(0,1fr)_300px]" : "grid-cols-1")
                     : "2xl:grid-cols-[300px_minmax(0,1fr)_340px]"
                 }`}
               >
+                {!isDataWorkflow && <>
                 <div
                   className={`rounded-lg border border-slate-200 bg-slate-50 p-4 ${
                     isDataWorkflow && dataAnalysisBranch === "interactive" ? "2xl:col-span-2" : "2xl:col-span-3"
@@ -1628,631 +1617,15 @@ function UniversalProjectWizardContent() {
                 </div>
               </aside>
 
+              </>}
               <div className="min-w-0 space-y-6 overflow-hidden">
-              {/* DATA ANALYSIS MODULE: 2-BRANCH MODE SELECTOR */}
-              {isDataWorkflow && (
-                <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-teal-50/40 p-4 shadow-sm">
-                  <div className="mb-3">
-                    <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
-                      <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-                      <span>{locale === "vi" ? "MÀN PHÂN TÍCH DỮ LIỆU" : "DATA ANALYSIS MODULE"}</span>
-                    </h3>
-                    <p className="mt-0.5 text-xs text-emerald-700">
-                      {locale === "vi"
-                        ? "Chọn cách bạn muốn làm việc với file bảng tính Excel / Google Sheets / CSV:"
-                        : "Choose how you want to work with your spreadsheet files:"}
-                    </p>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {/* Branch 1: Phân tích trực tiếp */}
-                    <button
-                      type="button"
-                      onClick={() => setDataAnalysisBranch("interactive")}
-                      className={`text-left rounded-xl border p-4 transition-all ${
-                        dataAnalysisBranch === "interactive"
-                          ? "border-emerald-500 bg-white text-emerald-950 shadow-md ring-2 ring-emerald-500/20"
-                          : "border-slate-200 bg-white/80 text-slate-700 hover:border-emerald-300 hover:bg-white"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                            dataAnalysisBranch === "interactive" ? "bg-emerald-600 text-white" : "bg-emerald-100 text-emerald-700"
-                          }`}>
-                            <BarChart3 className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <span className="block text-sm font-bold">
-                              {locale === "vi" ? "📊 Phân tích trực tiếp" : "📊 Interactive Analysis"}
-                            </span>
-                            <span className="block text-[11px] font-semibold text-emerald-700">
-                              {locale === "vi" ? "Xem Excel, KPI, biểu đồ, AI insight" : "Spreadsheet, KPIs, charts, AI insights"}
-                            </span>
-                          </div>
-                        </div>
-                        {dataAnalysisBranch === "interactive" && (
-                          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-                        )}
-                      </div>
-                      <p className="mt-2.5 text-xs text-slate-600 leading-relaxed">
-                        {locale === "vi"
-                          ? "Mở trực tiếp bảng tính trên web, tự động phát hiện số liệu, lọc dữ liệu, xem biểu đồ và nhận xét AI tức thì mà KHÔNG cần tạo file Word DOCX."
-                          : "Directly open spreadsheet on web, view stats, filter data, inspect charts and AI insights with NO DOCX creation needed."}
-                      </p>
-                      <div className="mt-3">
-                        <span className={`inline-flex items-center gap-1 text-xs font-bold ${
-                          dataAnalysisBranch === "interactive" ? "text-emerald-700" : "text-slate-500"
-                        }`}>
-                          {locale === "vi" ? "Bắt đầu phân tích trực tiếp →" : "Start interactive analysis →"}
-                        </span>
-                      </div>
-                    </button>
-
-                    {/* Branch 2: Tạo báo cáo DOCX */}
-                    <button
-                      type="button"
-                      onClick={() => setDataAnalysisBranch("report")}
-                      className={`text-left rounded-xl border p-4 transition-all ${
-                        dataAnalysisBranch === "report"
-                          ? "border-emerald-500 bg-white text-emerald-950 shadow-md ring-2 ring-emerald-500/20"
-                          : "border-slate-200 bg-white/80 text-slate-700 hover:border-emerald-300 hover:bg-white"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                            dataAnalysisBranch === "report" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-700"
-                          }`}>
-                            <FileText className="h-5 w-5" />
-                          </div>
-                          <div>
-                            <span className="block text-sm font-bold">
-                              {locale === "vi" ? "📄 Tạo báo cáo DOCX" : "📄 Generate DOCX Report"}
-                            </span>
-                            <span className="block text-[11px] font-semibold text-slate-500">
-                              {locale === "vi" ? "AI viết & xuất file Word hoàn chỉnh" : "AI writes and exports full Word doc"}
-                            </span>
-                          </div>
-                        </div>
-                        {dataAnalysisBranch === "report" && (
-                          <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-                        )}
-                      </div>
-                      <p className="mt-2.5 text-xs text-slate-600 leading-relaxed">
-                        {locale === "vi"
-                          ? "Phân tích dữ liệu theo yêu cầu, tùy chọn dùng mẫu Word, thiết lập số trang và để AI viết thành tài liệu báo cáo DOCX hoàn chỉnh."
-                          : "Analyze dataset based on instructions, optional Word template, target pages, and let AI write a complete DOCX report."}
-                      </p>
-                      <div className="mt-3">
-                        <span className={`inline-flex items-center gap-1 text-xs font-bold ${
-                          dataAnalysisBranch === "report" ? "text-emerald-700" : "text-slate-500"
-                        }`}>
-                          {locale === "vi" ? "Tạo báo cáo DOCX →" : "Generate DOCX Report →"}
-                        </span>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* REPORT-SPECIFIC FIELDS: Word template, prompt, page count, extra requirements */}
-              {(!isDataWorkflow || dataAnalysisBranch === "report") && (
-                <>
-                  <div className="space-y-3">
-                    <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <Wand2 className="h-4 w-4 text-indigo-600" />
-                      <span>{copy.createMode}</span>
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {[
-                        {
-                          id: "scratch" as const,
-                          title: isDataWorkflow ? (locale === "vi" ? "Không dùng mẫu Word" : "No Word template") : copy.scratchMode,
-                          desc: isDataWorkflow
-                            ? (locale === "vi" ? "AI tự tạo bố cục báo cáo từ file dữ liệu đã tải lên." : "AI creates the report layout from the uploaded dataset.")
-                            : copy.scratchDesc,
-                          icon: Sparkles,
-                        },
-                        {
-                          id: "template" as const,
-                          title: isDataWorkflow ? (locale === "vi" ? "Có mẫu Word" : "Use Word template") : copy.templateMode,
-                          desc: isDataWorkflow
-                            ? (locale === "vi" ? "Tải thêm file DOCX mẫu để AI đổ kết quả phân tích vào đúng bố cục." : "Upload a DOCX template so AI writes the analysis into that layout.")
-                            : copy.templateDesc,
-                          icon: FileText,
-                        },
-                      ].map((item) => {
-                        const Icon = item.icon;
-                        const active = autoCreationMode === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            onClick={() => setAutoCreationMode(item.id)}
-                            className={`text-left rounded-lg border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
-                              active
-                                ? "border-indigo-500 bg-indigo-50 text-indigo-950 shadow-xs"
-                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                            }`}
-                          >
-                            <span className="flex items-center justify-between gap-3">
-                              <span className="flex items-center gap-2 text-sm font-bold">
-                                <Icon className={`h-4 w-4 ${active ? "text-indigo-600" : "text-slate-500"}`} />
-                                {item.title}
-                              </span>
-                              {active && <Check className="h-4 w-4 text-indigo-600" />}
-                            </span>
-                            <span className="mt-2 block text-xs leading-5 text-slate-500">{item.desc}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {autoCreationMode === "template" && (
-                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-700">{copy.templateUpload}</label>
-                      <input
-                        type="file"
-                        accept=".docx"
-                        onChange={(e) => handleTemplateFileChange(e.target.files?.[0] || null)}
-                        className="hidden"
-                        id="auto-template-input"
-                      />
-
-                      {!autoTemplateFile ? (
-                        <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-5 text-center">
-                          <Upload className="mx-auto mb-2 h-7 w-7 text-indigo-500" />
-                          <p className="text-xs font-bold text-slate-800">{copy.dropTemplate}</p>
-                          <label
-                            htmlFor="auto-template-input"
-                            className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-white px-3.5 py-1.5 text-xs font-semibold text-indigo-700 shadow-xs ring-1 ring-indigo-100 transition hover:bg-indigo-50"
-                          >
-                            <Upload className="h-3.5 w-3.5" />
-                            {copy.chooseFile}
-                          </label>
-                        </div>
-                      ) : (
-                        <div className="rounded-lg border border-slate-200 bg-white p-4">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold uppercase text-slate-500">{copy.selectedTemplate}</p>
-                              <div className="mt-1 flex min-w-0 items-center gap-2 text-sm font-bold text-slate-900">
-                                <FileText className="h-4 w-4 shrink-0 text-indigo-600" />
-                                <span className="truncate">{autoTemplateFile.name}</span>
-                              </div>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {(autoTemplateFile.size / 1024).toFixed(1)} KB
-                                {templatePreview ? ` · ${templatePreview.word_count || 0} từ · ${templatePreview.tables_count || 0} bảng` : ""}
-                              </p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <label
-                                htmlFor="auto-template-input"
-                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-200"
-                              >
-                                <Upload className="h-3.5 w-3.5" />
-                                {copy.changeTemplate}
-                              </label>
-                              <button
-                                type="button"
-                                onClick={clearTemplateFile}
-                                className="inline-flex items-center gap-1.5 rounded-md bg-red-50 px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-100"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                {copy.removeTemplate}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {(isTemplatePreviewing || templatePreview || templatePreviewError) && (
-                        <div className="rounded-lg border border-slate-200 bg-white p-4">
-                          <div className="mb-3 flex items-center justify-between gap-3">
-                            <h3 className="text-xs font-bold uppercase text-slate-500">{copy.templatePreview}</h3>
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                              {templatePreview && (
-                                <span className="text-[11px] font-semibold text-slate-400">
-                                  {templatePreview.word_count || 0} từ · {templatePreview.tables_count || 0} bảng
-                                </span>
-                              )}
-                              {templatePreview && !templatePreviewError && (
-                                <button
-                                  type="button"
-                                  onClick={() => setIsTemplateInfoHidden((value) => !value)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 transition hover:bg-slate-200"
-                                >
-                                  {isTemplateInfoHidden ? (
-                                    <PanelLeftOpen className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <PanelLeftClose className="h-3.5 w-3.5" />
-                                  )}
-                                  <span>{isTemplateInfoHidden ? copy.showTemplateInfo : copy.hideTemplateInfo}</span>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          {isTemplatePreviewing ? (
-                            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
-                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              <span>{copy.templatePreviewLoading}</span>
-                            </div>
-                          ) : templatePreviewError ? (
-                            <p className="text-xs font-medium text-red-600">{templatePreviewError}</p>
-                          ) : templatePreview ? (
-                            <div className={`grid gap-4 ${isTemplateInfoHidden ? "lg:grid-cols-1" : "lg:grid-cols-[260px_1fr]"}`}>
-                              {!isTemplateInfoHidden && (
-                                <div className="space-y-2">
-                                  <p className="text-xs font-bold text-slate-800">{copy.templateStats}</p>
-                                  <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1 text-xs text-slate-600">
-                                    {(templatePreview.headings || []).map((heading: any, idx: number) => (
-                                      <div key={idx} className="rounded-lg bg-slate-50 px-2.5 py-1.5">
-                                        {heading.text}
-                                      </div>
-                                    ))}
-                                    {(templatePreview.headings || []).length === 0 && (
-                                      <p className="text-slate-400">{copy.templatePreviewEmpty}</p>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                              <div>
-                                <p className="mb-2 text-xs font-bold text-slate-800">{copy.fullTemplateContent}</p>
-                                {templatePreview.html_document ? (
-                                  <div className="h-[640px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                                    <iframe
-                                      title={copy.templatePreview}
-                                      srcDoc={templatePreview.html_document}
-                                      className="h-full w-full bg-slate-100"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="max-h-[520px] overflow-y-auto rounded-lg bg-slate-50 p-4 text-xs leading-6 text-slate-700">
-                                    {(templatePreview.paragraphs || []).length > 0 ? (
-                                      (templatePreview.paragraphs || []).map((paragraph: any, idx: number) => (
-                                        <p key={idx} className={paragraph.is_heading ? "mt-2 font-bold text-slate-900" : "mt-1"}>
-                                          {paragraph.text}
-                                        </p>
-                                      ))
-                                    ) : (
-                                      <p className="text-slate-400">{copy.templatePreviewEmpty}</p>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div className="grid gap-4 lg:grid-cols-[1fr_180px]">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <label className="text-sm font-bold text-slate-900">
-                            {moduleAutoFields.mainLabel}
-                            {moduleAutoFields.requiresPrompt && <span className="ml-1 text-red-500">*</span>}
-                          </label>
-                          <p className="mt-1 text-[11px] leading-4 text-slate-500">{moduleAutoFields.mainHint}</p>
-                        </div>
-                        {moduleAutoFields.showVoice && (
-                          <button
-                            type="button"
-                            onClick={() => setIsVoiceOpen(true)}
-                            className="flex shrink-0 items-center space-x-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg transition"
-                          >
-                            <Mic className="h-3.5 w-3.5 text-rose-600" />
-                            <span>{copy.voiceIdea}</span>
-                          </button>
-                        )}
-                      </div>
-                      <textarea
-                        rows={isDataWorkflow ? 3 : 4}
-                        value={autoPrompt}
-                        onChange={(e) => setAutoPrompt(e.target.value)}
-                        placeholder={moduleAutoFields.mainPlaceholder}
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-bold text-slate-900">{copy.pageCount}</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={120}
-                        value={targetPages}
-                        onChange={(e) => setTargetPages(Math.max(1, Math.min(120, Number(e.target.value) || 1)))}
-                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-900">{moduleAutoFields.requirementsLabel}</label>
-                    <textarea
-                      rows={3}
-                      value={autoRequirements}
-                      onChange={(e) => setAutoRequirements(e.target.value)}
-                      placeholder={moduleAutoFields.requirementsPlaceholder}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
-                    />
-                  </div>
-                </>
-              )}
-
-              {/* WORKFLOW A: PHÂN TÍCH TRỰC TIẾP (INTERACTIVE DATA ANALYSIS) */}
-              {isDataWorkflow && dataAnalysisBranch === "interactive" && (
-                <div className="min-w-0 space-y-4 overflow-hidden">
-                  {/* If Workspace is active and dataset is loaded, render Workspace View */}
-                  {isInteractiveWorkspaceOpen && dataPreview && !dataPreview.error ? (
-                    <div className="min-w-0 space-y-4 overflow-hidden">
-                      <ExcelAnalysisWorkspace
-                        fileName={dataPreview.file_name || autoFiles[0]?.name || "Bảng tính dữ liệu"}
-                        file={autoFiles[0] || null}
-                        dataSourceUrl={dataSourceUrl}
-                        visualWorkbook={dataPreview.visual_workbook}
-                        initialAnalysis={dataPreview.initial_analysis}
-                        legacyData={dataPreview}
-                        initialAnalysisResult={interactiveAnalysisResult}
-                        preferredSheet={interactivePreferredSheet}
-                        onBackToSetup={() => setIsInteractiveWorkspaceOpen(false)}
-                        onSwitchToReportMode={() => setDataAnalysisBranch("report")}
-                        onGenerateDocx={handleCreateDocxFromInteractiveFinding}
-                        isGeneratingDocx={isAutoSubmitting}
-                        locale={locale}
-                      />
-                    </div>
-                  ) : (
-                    /* Step-by-step Setup & Prompt Flow */
-                    <div className="min-w-0 space-y-4 overflow-hidden">
-                      {/* BƯỚC 1: NGUỒN DỮ LIỆU */}
-                      <div className="rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs space-y-3.5">
-                        <div className="flex items-center justify-between">
-                          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                            <Upload className="h-4 w-4 text-emerald-600" />
-                            <span>{locale === "vi" ? "Bước 1: Chọn nguồn dữ liệu bảng tính" : "Step 1: Choose spreadsheet data source"}</span>
-                          </h3>
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                            {locale === "vi" ? "Bước 1" : "Step 1"}
-                          </span>
-                        </div>
-
-                        {/* Mode Switcher: Tải file từ máy vs Dán link dữ liệu */}
-                        <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDataSourceMode("file");
-                              setDataPreview(null);
-                              setDataPreviewConfirmed(false);
-                              setIsInteractiveWorkspaceOpen(false);
-                              setError(null);
-                            }}
-                            className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-bold transition ${
-                              dataSourceMode === "file" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                            }`}
-                          >
-                            <Upload className="h-3.5 w-3.5 text-emerald-600" />
-                            <span>{locale === "vi" ? "Tải file từ máy" : "Upload file"}</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDataSourceMode("url");
-                              setDataPreview(null);
-                              setDataPreviewConfirmed(false);
-                              setIsInteractiveWorkspaceOpen(false);
-                              setError(null);
-                            }}
-                            className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-bold transition ${
-                              dataSourceMode === "url" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600 hover:text-slate-900"
-                            }`}
-                          >
-                            <ExternalLink className="h-3.5 w-3.5 text-emerald-600" />
-                            <span>{locale === "vi" ? "Dán link dữ liệu" : "Paste data link"}</span>
-                          </button>
-                        </div>
-
-                        {/* URL Mode Input */}
-                        {dataSourceMode === "url" && (
-                          <div className="space-y-2 pt-1">
-                            <label className="text-xs font-bold text-slate-700">
-                              {locale === "vi" ? "Link Google Sheets công khai hoặc file CSV/XLSX URL" : "Public Google Sheets URL or CSV/XLSX Link"}
-                            </label>
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                              <input
-                                type="url"
-                                value={dataSourceUrl}
-                                onChange={(e) => {
-                                  setDataSourceUrl(e.target.value);
-                                  setDataPreviewConfirmed(false);
-                                }}
-                                placeholder="https://docs.google.com/spreadsheets/d/... hoặc link XLSX/CSV"
-                                className="h-10 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => previewDatasetSource(null, "url")}
-                                disabled={!dataSourceUrl.trim() || isDataPreviewing}
-                                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 transition shadow-2xs"
-                              >
-                                <RefreshCw className={`h-3.5 w-3.5 ${isDataPreviewing ? "animate-spin" : ""}`} />
-                                <span>
-                                  {isDataPreviewing
-                                    ? locale === "vi" ? "Đang đọc link..." : "Reading..."
-                                    : locale === "vi" ? "Đọc link" : "Read link"}
-                                </span>
-                              </button>
-                            </div>
-                            <p className="text-[11px] text-slate-400">
-                              {locale === "vi"
-                                ? "Google Sheets cần ở chế độ 'Bất kỳ ai có đường liên kết đều có thể xem' (Public/Viewer)."
-                                : "Google Sheets must have 'Anyone with the link can view' permissions."}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* File Mode Input */}
-                        {dataSourceMode === "file" && (
-                          <div className="space-y-2 pt-1">
-                            <input
-                              ref={autoFileInputRef}
-                              type="file"
-                              multiple={false}
-                              accept=".xlsx,.xls,.xlsm,.csv"
-                              onChange={(e) => {
-                                if (e.target.files) handleAutoFilesChange(Array.from(e.target.files));
-                              }}
-                              className="hidden"
-                              id="auto-file-input-interactive"
-                            />
-
-                            {selectedDatasetFile ? (
-                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-                                <div className="min-w-0 flex items-center gap-2.5">
-                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-                                    <Table className="h-4 w-4" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <span className="truncate block text-xs font-bold text-slate-800">{selectedDatasetFile.name}</span>
-                                    <span className="text-[11px] text-slate-400">{(selectedDatasetFile.size / 1024).toFixed(1)} KB</span>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => previewDatasetSource(selectedDatasetFile, "file")}
-                                    disabled={isDataPreviewing}
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
-                                  >
-                                    <RefreshCw className={`h-3.5 w-3.5 ${isDataPreviewing ? "animate-spin" : ""}`} />
-                                    <span>{locale === "vi" ? "Đọc lại" : "Read again"}</span>
-                                  </button>
-                                  <label
-                                    htmlFor="auto-file-input-interactive"
-                                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-2xs"
-                                  >
-                                    <Upload className="h-3.5 w-3.5" />
-                                    <span>{locale === "vi" ? "Đổi file" : "Change"}</span>
-                                  </label>
-                                  <button
-                                    type="button"
-                                    onClick={clearAutoFiles}
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 transition"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/30 p-6 text-center hover:bg-emerald-50/60 transition">
-                                <Upload className="mx-auto h-8 w-8 text-emerald-600 mb-2" />
-                                <p className="text-xs font-bold text-slate-800">
-                                  {locale === "vi" ? "Kéo thả hoặc chọn file XLSX, XLS, CSV" : "Drop or choose XLSX, XLS, CSV"}
-                                </p>
-                                <p className="text-[11px] text-slate-400 mt-0.5">
-                                  {locale === "vi" ? "Hỗ trợ file Excel đa sheet hoặc bảng dữ liệu CSV" : "Supports multi-sheet Excel files or CSV spreadsheets"}
-                                </p>
-                                <label
-                                  htmlFor="auto-file-input-interactive"
-                                  className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-2xs"
-                                >
-                                  <Upload className="h-3.5 w-3.5" />
-                                  <span>{copy.chooseFile}</span>
-                                </label>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Progressive Reading Feedback */}
-                        {isDataPreviewing && (
-                          <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3.5 text-xs font-bold text-emerald-800 flex items-center gap-2.5 animate-pulse">
-                            <RefreshCw className="h-4 w-4 animate-spin text-emerald-600 shrink-0" />
-                            <span>{dataPreviewLoadingStep || (locale === "vi" ? "Đang đọc dữ liệu bảng tính..." : "Reading spreadsheet data...")}</span>
-                          </div>
-                        )}
-
-                        {/* Error State with Retry button */}
-                        {dataPreview?.error && !isDataPreviewing && (
-                          <div className="rounded-lg border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
-                            <div className="flex items-start gap-2">
-                              <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
-                              <span>{dataPreview.error}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (dataSourceMode === "url") {
-                                  previewDatasetSource(null, "url");
-                                } else if (selectedDatasetFile) {
-                                  previewDatasetSource(selectedDatasetFile, "file");
-                                }
-                              }}
-                              className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-md bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 transition shadow-2xs"
-                            >
-                              <RefreshCw className="h-3.5 w-3.5" />
-                              <span>{locale === "vi" ? "Thử lại" : "Retry"}</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* BƯỚC 2 & BƯỚC 3: DỮ LIỆU ĐÃ ĐỌC & KHUNG NHẬP YÊU CẦU */}
-                      {dataPreview && !dataPreview.error && (
-                        <DirectAnalysisPromptPanel
-                          workbook={{
-                            fileName: dataPreview.file_name || autoFiles[0]?.name || "Bảng tính dữ liệu",
-                            sheetCount: dataPreview.sheet_count || dataPreview.sheets?.length || 1,
-                            totalRows: dataPreview.total_rows || 0,
-                            totalCols: dataPreview.total_columns || 0,
-                            sheets: dataPreview.sheets || [],
-                            columns: selectedDataColumns || dataPreview.columns || [],
-                            rawPreview: dataPreview,
-                          }}
-                          sheetRange={dataSheetRange}
-                          onChangeSheetRange={setDataSheetRange}
-                          selectedSheetName={selectedDataSheetName}
-                        onSelectSheet={setSelectedDataSheetName}
-                          analysisScopeMode={analysisScopeMode}
-                          onChangeAnalysisScopeMode={setAnalysisScopeMode}
-                          selectedAnalysisSheets={selectedAnalysisSheets}
-                          onChangeSelectedAnalysisSheets={setSelectedAnalysisSheets}
-                          analysisRange={analysisRange}
-                          onChangeAnalysisRange={setAnalysisRange}
-                          analysisPrompt={dataAnalysisRequest}
-                          onChangeAnalysisPrompt={setDataAnalysisRequest}
-                          onAnalyze={handleStartInteractiveAnalysis}
-                          isAnalyzing={isRunningInitialAnalysis}
-                          onOpenWorkspace={handleOpenInteractiveWorkspaceOnly}
-                          onChangeSource={clearAutoFiles}
-                          locale={locale}
-                        />
-                      )}
-
-                      {!dataPreview && !isDataPreviewing && (
-                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-5 text-center text-xs text-slate-500">
-                          {locale === "vi"
-                            ? "Sau khi đọc file hoặc link thành công, hệ thống sẽ hiển thị danh sách sheet và khung nhập yêu cầu phân tích tại đây."
-                            : "After reading file or link, sheets and analysis prompt panel will appear here."}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* WORKFLOW B: TẠO BÁO CÁO DOCX (KEEP 100% INTACT) */}
               {(!isDataWorkflow || dataAnalysisBranch === "report") && (
                 <>
                   {/* File Attachments / Data Source for DOCX Report */}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-700">
-                      {moduleAutoFields.fileLabel}
+                      {isDataWorkflow ? (locale === "vi" ? "Bước 1: Chọn dữ liệu" : "Step 1: Choose data") : moduleAutoFields.fileLabel}
                       {isDataWorkflow && <span className="ml-1 text-red-500">*</span>}
                     </label>
                     <input
@@ -2456,6 +1829,512 @@ function UniversalProjectWizardContent() {
                   </div>
                 </>
               )}
+              {/* REPORT-SPECIFIC FIELDS: Word template, prompt, page count, extra requirements */}
+              {(!isDataWorkflow || dataAnalysisBranch === "report") && (
+                <>
+                  <div className="space-y-3">
+                    <p className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Wand2 className="h-4 w-4 text-indigo-600" />
+                      <span>{isDataWorkflow ? (locale === "vi" ? "Bước 2: Chọn mẫu Word (tùy chọn)" : "Step 2: Word template (optional)") : copy.createMode}</span>
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {[
+                        {
+                          id: "scratch" as const,
+                          title: isDataWorkflow ? (locale === "vi" ? "Không dùng mẫu Word" : "No Word template") : copy.scratchMode,
+                          desc: isDataWorkflow
+                            ? (locale === "vi" ? "AI tự tạo bố cục báo cáo từ file dữ liệu đã tải lên." : "AI creates the report layout from the uploaded dataset.")
+                            : copy.scratchDesc,
+                          icon: Sparkles,
+                        },
+                        {
+                          id: "template" as const,
+                          title: isDataWorkflow ? (locale === "vi" ? "Có mẫu Word" : "Use Word template") : copy.templateMode,
+                          desc: isDataWorkflow
+                            ? (locale === "vi" ? "Tải thêm file DOCX mẫu để AI đổ kết quả phân tích vào đúng bố cục." : "Upload a DOCX template so AI writes the analysis into that layout.")
+                            : copy.templateDesc,
+                          icon: FileText,
+                        },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        const active = autoCreationMode === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setAutoCreationMode(item.id)}
+                            className={`text-left rounded-lg border p-4 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                              active
+                                ? "border-indigo-500 bg-indigo-50 text-indigo-950 shadow-xs"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                          >
+                            <span className="flex items-center justify-between gap-3">
+                              <span className="flex items-center gap-2 text-sm font-bold">
+                                <Icon className={`h-4 w-4 ${active ? "text-indigo-600" : "text-slate-500"}`} />
+                                {item.title}
+                              </span>
+                              {active && <Check className="h-4 w-4 text-indigo-600" />}
+                            </span>
+                            <span className="mt-2 block text-xs leading-5 text-slate-500">{item.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {autoCreationMode === "template" && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-700">{copy.templateUpload}</label>
+                      <input
+                        type="file"
+                        accept=".docx"
+                        onChange={(e) => handleTemplateFileChange(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id="auto-template-input"
+                      />
+
+                      {!autoTemplateFile ? (
+                        <div className="rounded-lg border border-dashed border-indigo-200 bg-indigo-50/50 p-5 text-center">
+                          <Upload className="mx-auto mb-2 h-7 w-7 text-indigo-500" />
+                          <p className="text-xs font-bold text-slate-800">{copy.dropTemplate}</p>
+                          <label
+                            htmlFor="auto-template-input"
+                            className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-white px-3.5 py-1.5 text-xs font-semibold text-indigo-700 shadow-xs ring-1 ring-indigo-100 transition hover:bg-indigo-50"
+                          >
+                            <Upload className="h-3.5 w-3.5" />
+                            {copy.chooseFile}
+                          </label>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-slate-200 bg-white p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold uppercase text-slate-500">{copy.selectedTemplate}</p>
+                              <div className="mt-1 flex min-w-0 items-center gap-2 text-sm font-bold text-slate-900">
+                                <FileText className="h-4 w-4 shrink-0 text-indigo-600" />
+                                <span className="truncate">{autoTemplateFile.name}</span>
+                              </div>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {(autoTemplateFile.size / 1024).toFixed(1)} KB
+                                {templatePreview ? ` · ${templatePreview.word_count || 0} từ · ${templatePreview.tables_count || 0} bảng` : ""}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <label
+                                htmlFor="auto-template-input"
+                                className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-200"
+                              >
+                                <Upload className="h-3.5 w-3.5" />
+                                {copy.changeTemplate}
+                              </label>
+                              <button
+                                type="button"
+                                onClick={clearTemplateFile}
+                                className="inline-flex items-center gap-1.5 rounded-md bg-red-50 px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-100"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                {copy.removeTemplate}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {(isTemplatePreviewing || templatePreview || templatePreviewError) && (
+                        <div className="rounded-lg border border-slate-200 bg-white p-4">
+                          <div className="mb-3 flex items-center justify-between gap-3">
+                            <h3 className="text-xs font-bold uppercase text-slate-500">{copy.templatePreview}</h3>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              {templatePreview && (
+                                <span className="text-[11px] font-semibold text-slate-400">
+                                  {templatePreview.word_count || 0} từ · {templatePreview.tables_count || 0} bảng
+                                </span>
+                              )}
+                              {templatePreview && !templatePreviewError && (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsTemplateInfoHidden((value) => !value)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg bg-slate-100 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 transition hover:bg-slate-200"
+                                >
+                                  {isTemplateInfoHidden ? (
+                                    <PanelLeftOpen className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <PanelLeftClose className="h-3.5 w-3.5" />
+                                  )}
+                                  <span>{isTemplateInfoHidden ? copy.showTemplateInfo : copy.hideTemplateInfo}</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          {isTemplatePreviewing ? (
+                            <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                              <span>{copy.templatePreviewLoading}</span>
+                            </div>
+                          ) : templatePreviewError ? (
+                            <p className="text-xs font-medium text-red-600">{templatePreviewError}</p>
+                          ) : templatePreview ? (
+                            <div className={`grid gap-4 ${isTemplateInfoHidden ? "lg:grid-cols-1" : "lg:grid-cols-[260px_1fr]"}`}>
+                              {!isTemplateInfoHidden && (
+                                <div className="space-y-2">
+                                  <p className="text-xs font-bold text-slate-800">{copy.templateStats}</p>
+                                  <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1 text-xs text-slate-600">
+                                    {(templatePreview.headings || []).map((heading: any, idx: number) => (
+                                      <div key={idx} className="rounded-lg bg-slate-50 px-2.5 py-1.5">
+                                        {heading.text}
+                                      </div>
+                                    ))}
+                                    {(templatePreview.headings || []).length === 0 && (
+                                      <p className="text-slate-400">{copy.templatePreviewEmpty}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                              <div>
+                                <p className="mb-2 text-xs font-bold text-slate-800">{copy.fullTemplateContent}</p>
+                                {templatePreview.html_document ? (
+                                  <div className="h-[640px] overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                                    <iframe
+                                      title={copy.templatePreview}
+                                      srcDoc={templatePreview.html_document}
+                                      className="h-full w-full bg-slate-100"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="max-h-[520px] overflow-y-auto rounded-lg bg-slate-50 p-4 text-xs leading-6 text-slate-700">
+                                    {(templatePreview.paragraphs || []).length > 0 ? (
+                                      (templatePreview.paragraphs || []).map((paragraph: any, idx: number) => (
+                                        <p key={idx} className={paragraph.is_heading ? "mt-2 font-bold text-slate-900" : "mt-1"}>
+                                          {paragraph.text}
+                                        </p>
+                                      ))
+                                    ) : (
+                                      <p className="text-slate-400">{copy.templatePreviewEmpty}</p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {isDataWorkflow && <h2 className="text-sm font-semibold text-slate-900">{locale === "vi" ? "Bước 3: Thiết lập báo cáo" : "Step 3: Report settings"}</h2>}
+                  <div className="grid gap-4 lg:grid-cols-[1fr_180px]">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <label className="text-sm font-bold text-slate-900">
+                            {moduleAutoFields.mainLabel}
+                            {moduleAutoFields.requiresPrompt && <span className="ml-1 text-red-500">*</span>}
+                          </label>
+                          <p className="mt-1 text-[11px] leading-4 text-slate-500">{moduleAutoFields.mainHint}</p>
+                        </div>
+                        {moduleAutoFields.showVoice && (
+                          <button
+                            type="button"
+                            onClick={() => setIsVoiceOpen(true)}
+                            className="flex shrink-0 items-center space-x-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg transition"
+                          >
+                            <Mic className="h-3.5 w-3.5 text-rose-600" />
+                            <span>{copy.voiceIdea}</span>
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        rows={isDataWorkflow ? 3 : 4}
+                        value={autoPrompt}
+                        onChange={(e) => setAutoPrompt(e.target.value)}
+                        placeholder={moduleAutoFields.mainPlaceholder}
+                        className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-900">{copy.pageCount}</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={120}
+                        value={targetPages}
+                        onChange={(e) => setTargetPages(Math.max(1, Math.min(120, Number(e.target.value) || 1)))}
+                        className="h-12 w-full rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-900">{moduleAutoFields.requirementsLabel}</label>
+                    <textarea
+                      rows={3}
+                      value={autoRequirements}
+                      onChange={(e) => setAutoRequirements(e.target.value)}
+                      placeholder={moduleAutoFields.requirementsPlaceholder}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* WORKFLOW A: PHÂN TÍCH TRỰC TIẾP (INTERACTIVE DATA ANALYSIS) */}
+              {isDataWorkflow && dataAnalysisBranch === "interactive" && (
+                <div className="min-w-0 space-y-4 overflow-hidden">
+                  {/* If Workspace is active and dataset is loaded, render Workspace View */}
+                  {isInteractiveWorkspaceOpen && dataPreview && !dataPreview.error ? (
+                    <div className="min-w-0 space-y-4 overflow-hidden">
+                      <ExcelAnalysisWorkspace
+                        fileName={dataPreview.file_name || autoFiles[0]?.name || "Bảng tính dữ liệu"}
+                        file={autoFiles[0] || null}
+                        dataSourceUrl={dataSourceUrl}
+                        visualWorkbook={dataPreview.visual_workbook}
+                        initialAnalysis={dataPreview.initial_analysis}
+                        legacyData={dataPreview}
+                        initialAnalysisResult={interactiveAnalysisResult}
+                        preferredSheet={interactivePreferredSheet}
+                        onBackToSetup={() => setIsInteractiveWorkspaceOpen(false)}
+                        onSwitchToReportMode={() => setDataAnalysisBranch("report")}
+                        onGenerateDocx={handleCreateDocxFromInteractiveFinding}
+                        isGeneratingDocx={isAutoSubmitting}
+                        locale={locale}
+                      />
+                    </div>
+                  ) : (
+                    /* Step-by-step Setup & Prompt Flow */
+                    <div className="min-w-0 space-y-4 overflow-hidden">
+                      {/* Show source setup until reading succeeds; changing source restores it. */}
+                      {(!dataPreview || dataPreview.error || isDataPreviewing) && (
+                      <div className="space-y-3.5">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                            <Upload className="h-4 w-4 text-emerald-600" />
+                            <span>{locale === "vi" ? "Bước 1: Chọn nguồn dữ liệu bảng tính" : "Step 1: Choose spreadsheet data source"}</span>
+                          </h3>
+
+                        </div>
+
+                        {/* Mode Switcher: Tải file từ máy vs Dán link dữ liệu */}
+                        <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDataSourceMode("file");
+                              setDataPreview(null);
+                              setDataPreviewConfirmed(false);
+                              setIsInteractiveWorkspaceOpen(false);
+                              setError(null);
+                            }}
+                            className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-bold transition ${
+                              dataSourceMode === "file" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            <Upload className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>{locale === "vi" ? "Tải file từ máy" : "Upload file"}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDataSourceMode("url");
+                              setDataPreview(null);
+                              setDataPreviewConfirmed(false);
+                              setIsInteractiveWorkspaceOpen(false);
+                              setError(null);
+                            }}
+                            className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-xs font-bold transition ${
+                              dataSourceMode === "url" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 text-emerald-600" />
+                            <span>{locale === "vi" ? "Dán link dữ liệu" : "Paste data link"}</span>
+                          </button>
+                        </div>
+
+                        {/* URL Mode Input */}
+                        {dataSourceMode === "url" && (
+                          <div className="space-y-2 pt-1">
+                            <label className="text-xs font-bold text-slate-700">
+                              {locale === "vi" ? "Link Google Sheets công khai hoặc file CSV/XLSX URL" : "Public Google Sheets URL or CSV/XLSX Link"}
+                            </label>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <input
+                                type="url"
+                                value={dataSourceUrl}
+                                onChange={(e) => {
+                                  setDataSourceUrl(e.target.value);
+                                  setDataPreviewConfirmed(false);
+                                }}
+                                placeholder="https://docs.google.com/spreadsheets/d/... hoặc link XLSX/CSV"
+                                className="h-10 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => previewDatasetSource(null, "url")}
+                                disabled={!dataSourceUrl.trim() || isDataPreviewing}
+                                className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 transition shadow-2xs"
+                              >
+                                <RefreshCw className={`h-3.5 w-3.5 ${isDataPreviewing ? "animate-spin" : ""}`} />
+                                <span>
+                                  {isDataPreviewing
+                                    ? locale === "vi" ? "Đang đọc link..." : "Reading..."
+                                    : locale === "vi" ? "Đọc link" : "Read link"}
+                                </span>
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-slate-400">
+                              {locale === "vi"
+                                ? "Google Sheets cần ở chế độ 'Bất kỳ ai có đường liên kết đều có thể xem' (Public/Viewer)."
+                                : "Google Sheets must have 'Anyone with the link can view' permissions."}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* File Mode Input */}
+                        {dataSourceMode === "file" && (
+                          <div className="space-y-2 pt-1">
+                            <input
+                              ref={autoFileInputRef}
+                              type="file"
+                              multiple={false}
+                              accept=".xlsx,.xls,.xlsm,.csv"
+                              onChange={(e) => {
+                                if (e.target.files) handleAutoFilesChange(Array.from(e.target.files));
+                              }}
+                              className="hidden"
+                              id="auto-file-input-interactive"
+                            />
+
+                            {selectedDatasetFile ? (
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                                <div className="min-w-0 flex items-center gap-2.5">
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                                    <Table className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="truncate block text-xs font-bold text-slate-800">{selectedDatasetFile.name}</span>
+                                    <span className="text-[11px] text-slate-400">{(selectedDatasetFile.size / 1024).toFixed(1)} KB</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => previewDatasetSource(selectedDatasetFile, "file")}
+                                    disabled={isDataPreviewing}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                                  >
+                                    <RefreshCw className={`h-3.5 w-3.5 ${isDataPreviewing ? "animate-spin" : ""}`} />
+                                    <span>{locale === "vi" ? "Đọc lại" : "Read again"}</span>
+                                  </button>
+                                  <label
+                                    htmlFor="auto-file-input-interactive"
+                                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-2xs"
+                                  >
+                                    <Upload className="h-3.5 w-3.5" />
+                                    <span>{locale === "vi" ? "Đổi file" : "Change"}</span>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={clearAutoFiles}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100 transition"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="rounded-xl border-2 border-dashed border-emerald-200 bg-emerald-50/30 p-6 text-center hover:bg-emerald-50/60 transition">
+                                <Upload className="mx-auto h-8 w-8 text-emerald-600 mb-2" />
+                                <p className="text-xs font-bold text-slate-800">
+                                  {locale === "vi" ? "Kéo thả hoặc chọn file XLSX, XLS, CSV" : "Drop or choose XLSX, XLS, CSV"}
+                                </p>
+                                <p className="text-[11px] text-slate-400 mt-0.5">
+                                  {locale === "vi" ? "Hỗ trợ file Excel đa sheet hoặc bảng dữ liệu CSV" : "Supports multi-sheet Excel files or CSV spreadsheets"}
+                                </p>
+                                <label
+                                  htmlFor="auto-file-input-interactive"
+                                  className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-2xs"
+                                >
+                                  <Upload className="h-3.5 w-3.5" />
+                                  <span>{copy.chooseFile}</span>
+                                </label>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Progressive Reading Feedback */}
+                        {isDataPreviewing && (
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-3.5 text-xs font-bold text-emerald-800 flex items-center gap-2.5 animate-pulse">
+                            <RefreshCw className="h-4 w-4 animate-spin text-emerald-600 shrink-0" />
+                            <span>{dataPreviewLoadingStep || (locale === "vi" ? "Đang đọc dữ liệu bảng tính..." : "Reading spreadsheet data...")}</span>
+                          </div>
+                        )}
+
+                        {/* Error State with Retry button */}
+                        {dataPreview?.error && !isDataPreviewing && (
+                          <div className="rounded-lg border border-red-200 bg-red-50 p-3.5 text-xs font-semibold text-red-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                              <span>{dataPreview.error}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (dataSourceMode === "url") {
+                                  previewDatasetSource(null, "url");
+                                } else if (selectedDatasetFile) {
+                                  previewDatasetSource(selectedDatasetFile, "file");
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 self-start sm:self-auto rounded-md bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700 transition shadow-2xs"
+                            >
+                              <RefreshCw className="h-3.5 w-3.5" />
+                              <span>{locale === "vi" ? "Thử lại" : "Retry"}</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      )}
+
+                      {/* BƯỚC 2 & BƯỚC 3: DỮ LIỆU ĐÃ ĐỌC & KHUNG NHẬP YÊU CẦU */}
+                      {dataPreview && !dataPreview.error && (
+                        <DirectAnalysisPromptPanel
+                          workbook={{
+                            fileName: dataPreview.file_name || autoFiles[0]?.name || "Bảng tính dữ liệu",
+                            sheetCount: dataPreview.sheet_count || dataPreview.sheets?.length || 1,
+                            totalRows: dataPreview.total_rows || 0,
+                            totalCols: dataPreview.total_columns || 0,
+                            sheets: dataPreview.sheets || [],
+                            columns: selectedDataColumns || dataPreview.columns || [],
+                            rawPreview: dataPreview,
+                          }}
+                          sheetRange={dataSheetRange}
+                          onChangeSheetRange={setDataSheetRange}
+                          selectedSheetName={selectedDataSheetName}
+                        onSelectSheet={setSelectedDataSheetName}
+                          analysisPrompt={dataAnalysisRequest}
+                          onChangeAnalysisPrompt={setDataAnalysisRequest}
+                          onAnalyze={handleStartInteractiveAnalysis}
+                          isAnalyzing={isRunningInitialAnalysis}
+                          onOpenWorkspace={handleOpenInteractiveWorkspaceOnly}
+                          onChangeSource={clearAutoFiles}
+                          locale={locale}
+                        />
+                      )}
+
+                      {!dataPreview && !isDataPreviewing && (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 p-5 text-center text-xs text-slate-500">
+                          {locale === "vi"
+                            ? "Sau khi đọc file hoặc link thành công, hệ thống sẽ hiển thị danh sách sheet và khung nhập yêu cầu phân tích tại đây."
+                            : "After reading file or link, sheets and analysis prompt panel will appear here."}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+
             </div>
 
               {!(isDataWorkflow && dataAnalysisBranch === "interactive") && (
@@ -2782,7 +2661,6 @@ function UniversalProjectWizardContent() {
             </div>
           )}
         </div>
-        )
       )}
 
       {/* MODE 3: BULK BATCH GENERATION */}

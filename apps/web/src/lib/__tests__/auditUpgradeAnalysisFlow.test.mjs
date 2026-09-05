@@ -5,11 +5,10 @@ import { resolve } from "node:path";
 
 const componentDir = resolve(process.cwd(), "src/components");
 
-test("DirectAnalysisPromptPanel renders sheet preview, scope selector, and Next button to open analysis workspace", () => {
+test("DirectAnalysisPromptPanel renders sheet preview and Next button without setup scope controls to open analysis workspace", () => {
   const source = readFileSync(resolve(componentDir, "DirectAnalysisPromptPanel.tsx"), "utf8");
   assert.match(source, /Đã đọc dữ liệu thành công/);
-  assert.match(source, /Phạm vi phân tích/);
-  assert.match(source, /Toàn bộ workbook/);
+  assert.doesNotMatch(source, /Phạm vi phân tích/);
   assert.match(source, /Tiếp theo: Mở màn phân tích →/);
 });
 
@@ -43,9 +42,9 @@ test("workbook read-all mode lets Ask AI chat use workbook scope", () => {
   const workspaceSource = readFileSync(resolve(componentDir, "ExcelAnalysisWorkspace.tsx"), "utf8");
   const chatSource = readFileSync(resolve(componentDir, "ExcelAIChatPanel.tsx"), "utf8");
 
-  assert.match(workspaceSource, /const \[chatScopeMode, setChatScopeMode\] = useState<"sheet" \| "workbook">/);
-  assert.match(workspaceSource, /setChatScopeMode\("workbook"\)/);
-  assert.match(workspaceSource, /chatScope=\{\{ type: chatScopeMode, sheets: sheetNames \}\}/);
-  assert.match(chatSource, /chatScope\?: \{ type: "sheet" \| "workbook"; sheets\?: string\[\] \}/);
+  assert.match(workspaceSource, /buildWorkbookScope\(sheetNames, selectedAnalysisSheets\)/);
+  assert.match(workspaceSource, /setSelectedAnalysisSheets\(\[\.\.\.sheetNames\]\)/);
+  assert.match(workspaceSource, /chatScope=\{analysisScope/);
+  assert.match(chatSource, /chatScope\?: \{ type: "sheet" \| "sheets" \| "workbook"; sheet\?: string; sheets\?: string\[\] \}/);
   assert.match(chatSource, /formData\.append\("scope", JSON\.stringify\(chatScope\)\)/);
 });

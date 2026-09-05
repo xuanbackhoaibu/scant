@@ -468,47 +468,47 @@ export default function SpreadsheetPreview({
         contain: "inline-size",
       }}
     >
-      {/* 1. Spreadsheet Header Bar & Toolbar (Fixed at top, not scrolled) */}
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-slate-100/90 px-3 py-2 text-xs">
-        <div className="flex items-center gap-2 text-slate-700 font-semibold">
-          <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-600 text-white font-bold shadow-sm">
+      {/* 1. Spreadsheet Header Bar & Toolbar (Fixed at top, not scrolled, 44px SaaS style) */}
+      <div className="flex h-11 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 text-xs">
+        <div className="flex items-center gap-2 text-slate-700 font-semibold min-w-0">
+          <div className="flex h-6 w-6 items-center justify-center rounded bg-emerald-600 text-white font-bold shadow-2xs shrink-0">
             <FileSpreadsheet className="h-3.5 w-3.5" />
           </div>
-          <span className="truncate max-w-[180px]" title={currentSheet.name}>
+          <span className="truncate max-w-[180px] font-semibold text-slate-900" title={currentSheet.name}>
             {currentSheet.name}
           </span>
-          <span className="rounded bg-slate-200/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
+          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-normal text-slate-500 shrink-0">
             {maxRows.toLocaleString()} {locale === "vi" ? "dòng" : "rows"} × {maxCols} {locale === "vi" ? "cột" : "cols"}
           </span>
           {internalSelectedRange && (
-            <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 ring-1 ring-blue-300">
+            <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700 border border-indigo-200/80 shrink-0">
               {locale === "vi" ? "Vùng chọn:" : "Selection:"} {internalSelectedRange}
             </span>
           )}
           {Object.keys(cellHighlights).length > 0 && (
-            <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-bold text-yellow-800 ring-1 ring-yellow-300">
+            <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 border border-amber-200/80 shrink-0">
               ✨ {Object.keys(cellHighlights).length} {locale === "vi" ? "ô đánh dấu" : "highlighted"}
             </span>
           )}
         </div>
 
         {/* Toolbar Controls */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           {/* Quick Search Filter */}
           <div className="relative flex items-center">
-            <Search className="pointer-events-none absolute left-2 top-1.5 h-3 w-3 text-slate-400" />
+            <Search className="pointer-events-none absolute left-2 top-2 h-3 w-3 text-slate-400" />
             <input
               type="text"
               value={gridSearchFilter}
               onChange={(e) => setGridSearchFilter(e.target.value)}
-              placeholder={locale === "vi" ? "Lọc nhanh dòng..." : "Filter rows..."}
-              className="h-6 w-28 sm:w-36 rounded-md border border-slate-300 bg-white pl-6 pr-5 text-[11px] font-medium text-slate-700 placeholder:text-slate-400 focus:border-emerald-500 focus:w-48 transition-all"
+              placeholder={locale === "vi" ? "Tìm nhanh..." : "Quick find..."}
+              className="h-7 w-28 sm:w-36 rounded-md border border-slate-200 bg-white pl-6 pr-5 text-[11px] font-medium text-slate-700 placeholder:text-slate-400 focus:border-slate-400 focus:w-48 transition-all"
             />
             {gridSearchFilter && (
               <button
                 type="button"
                 onClick={() => setGridSearchFilter("")}
-                className="absolute right-1.5 top-1 text-[10px] text-slate-400 hover:text-slate-600"
+                className="absolute right-1.5 top-1.5 text-[10px] text-slate-400 hover:text-slate-600"
               >
                 ✕
               </button>
@@ -520,35 +520,35 @@ export default function SpreadsheetPreview({
             </span>
           )}
 
-          <div className="mx-1 h-3.5 w-[1px] bg-slate-300" />
+          <div className="mx-1 h-3.5 w-[1px] bg-slate-200" />
 
           <button
             type="button"
             onClick={() => handleZoom(-10)}
-            className="rounded p-1 text-slate-600 hover:bg-slate-200/70 active:scale-95"
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800 active:scale-95 transition"
             title={locale === "vi" ? "Thu nhỏ" : "Zoom out"}
           >
             <ZoomOut className="h-3.5 w-3.5" />
           </button>
-          <span className="w-10 text-center font-mono text-[11px] font-semibold text-slate-700 select-none">
+          <span className="w-9 text-center font-mono text-[11px] font-medium text-slate-600 select-none">
             {zoom}%
           </span>
           <button
             type="button"
             onClick={() => handleZoom(10)}
-            className="rounded p-1 text-slate-600 hover:bg-slate-200/70 active:scale-95"
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800 active:scale-95 transition"
             title={locale === "vi" ? "Phóng to" : "Zoom in"}
           >
             <ZoomIn className="h-3.5 w-3.5" />
           </button>
 
-          <div className="mx-1 h-3.5 w-[1px] bg-slate-300" />
+          <div className="mx-1 h-3.5 w-[1px] bg-slate-200" />
 
           <button
             type="button"
             onClick={() => setShowGridlines((v) => !v)}
-            className={`flex items-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium transition-colors ${
-              showGridlines ? "bg-slate-200 text-slate-800 font-semibold" : "text-slate-600 hover:bg-slate-200/60"
+            className={`flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium transition-colors ${
+              showGridlines ? "bg-slate-100 text-slate-900 font-semibold" : "text-slate-500 hover:bg-slate-100"
             }`}
             title={locale === "vi" ? "Bật/Tắt đường lưới" : "Toggle gridlines"}
           >
@@ -559,7 +559,7 @@ export default function SpreadsheetPreview({
           <button
             type="button"
             onClick={() => setIsFullscreen((v) => !v)}
-            className="rounded p-1 text-slate-600 hover:bg-slate-200/70 active:scale-95 ml-1"
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800 active:scale-95 ml-0.5 transition"
             title={isFullscreen ? (locale === "vi" ? "Thu nhỏ" : "Exit fullscreen") : (locale === "vi" ? "Toàn màn hình" : "Fullscreen")}
           >
             {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}

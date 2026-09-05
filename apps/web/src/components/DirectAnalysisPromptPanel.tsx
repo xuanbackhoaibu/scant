@@ -4,8 +4,6 @@ import React from "react";
 import {
   FileSpreadsheet,
   CheckCircle2,
-  Table,
-  Layers,
   RefreshCw,
   AlertCircle,
   Eye,
@@ -18,7 +16,6 @@ import {
   resolveSelectedSheetName,
 } from "@/lib/directAnalysisPreview";
 
-export type AnalysisScopeMode = "workbook" | "sheet" | "sheets" | "range";
 
 export interface LoadedWorkbookInfo {
   fileName: string;
@@ -36,12 +33,6 @@ interface DirectAnalysisPromptPanelProps {
   onChangeSheetRange: (val: string) => void;
   selectedSheetName: string;
   onSelectSheet: (sheetName: string) => void;
-  analysisScopeMode: AnalysisScopeMode;
-  onChangeAnalysisScopeMode: (mode: AnalysisScopeMode) => void;
-  selectedAnalysisSheets: string[];
-  onChangeSelectedAnalysisSheets: (sheets: string[]) => void;
-  analysisRange: string;
-  onChangeAnalysisRange: (range: string) => void;
   analysisPrompt?: string;
   onChangeAnalysisPrompt?: (val: string) => void;
   onAnalyze?: (prompt: string, preferredSheet?: string) => void;
@@ -57,12 +48,6 @@ export default function DirectAnalysisPromptPanel({
   onChangeSheetRange,
   selectedSheetName,
   onSelectSheet,
-  analysisScopeMode,
-  onChangeAnalysisScopeMode,
-  selectedAnalysisSheets,
-  onChangeSelectedAnalysisSheets,
-  analysisRange,
-  onChangeAnalysisRange,
   analysisPrompt,
   onChangeAnalysisPrompt,
   onAnalyze,
@@ -74,7 +59,6 @@ export default function DirectAnalysisPromptPanel({
   const activeSheetName = resolveSelectedSheetName(workbook.rawPreview || workbook, selectedSheetName, sheetRange);
   const selectedVisual = buildSelectedVisualWorkbook(workbook.rawPreview, activeSheetName);
   const selectedSheetMeta = workbook.sheets?.find((sheet) => sheet.name === activeSheetName);
-  const sheetOptions = workbook.sheets || [];
 
   return (
     <div className="min-w-0 space-y-4 overflow-hidden">
@@ -115,43 +99,6 @@ export default function DirectAnalysisPromptPanel({
           )}
         </div>
 
-        {/* Sheet Badges List */}
-        {workbook.sheets && workbook.sheets.length > 0 && (
-          <div className="pt-1">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              {locale === "vi" ? "Danh sách Sheet trong file:" : "Sheets in workbook:"}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {workbook.sheets.map((s, idx) => {
-                const isSelected = activeSheetName === s.name;
-                return (
-                  <button
-                    key={s.name || idx}
-                    type="button"
-                    onClick={() => {
-                      onSelectSheet(s.name);
-                      onChangeSheetRange(s.name);
-                    }}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold transition ${
-                      isSelected
-                        ? "bg-emerald-600 text-white shadow-2xs ring-1 ring-emerald-700"
-                        : "bg-white text-slate-700 border border-slate-200 hover:border-emerald-300 hover:bg-emerald-50/50"
-                    }`}
-                    title={s.row_count ? `${s.row_count} dòng` : s.name}
-                  >
-                    <Table className="h-3 w-3" />
-                    <span>{s.name}</span>
-                    {s.row_count !== undefined && s.row_count > 0 && (
-                      <span className={`text-[10px] ${isSelected ? "text-emerald-100" : "text-slate-400"}`}>
-                        ({s.row_count})
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
       </div>
 
@@ -218,111 +165,9 @@ export default function DirectAnalysisPromptPanel({
         </p>
       </div>
 
-      {/* BƯỚC 4: PHẠM VI PHÂN TÍCH */}
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xs space-y-3.5">
-        <div className="flex flex-col gap-1">
-          <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-            <Layers className="h-4 w-4 text-emerald-600" />
-            <span>{locale === "vi" ? "Phạm vi phân tích" : "Analysis scope"}</span>
-          </h3>
-          <p className="text-xs text-slate-500">
-            {sheetOptions.length <= 1
-              ? locale === "vi"
-                ? `Workbook này có 1 sheet · ${activeSheetName}`
-                : `This workbook has 1 sheet · ${activeSheetName}`
-              : locale === "vi"
-              ? "Chọn một sheet, nhiều sheet, một vùng cụ thể hoặc toàn bộ workbook."
-              : "Choose one sheet, multiple sheets, a range, or the whole workbook."}
-          </p>
-        </div>
-
-        <div className="grid gap-2 sm:grid-cols-2">
-          {[
-            { id: "workbook" as const, label: locale === "vi" ? "Toàn bộ workbook" : "Whole workbook", detail: `${sheetOptions.length || 1} sheet` },
-            { id: "sheet" as const, label: locale === "vi" ? "Sheet hiện tại" : "Current sheet", detail: activeSheetName },
-            { id: "sheets" as const, label: locale === "vi" ? "Chọn nhiều sheet" : "Multiple sheets", detail: `${selectedAnalysisSheets.length || 0} selected` },
-            { id: "range" as const, label: locale === "vi" ? "Sheet / vùng cụ thể" : "Sheet / range", detail: analysisRange || "A1:..." },
-          ].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onChangeAnalysisScopeMode(item.id)}
-              className={`rounded-lg border p-3 text-left transition ${
-                analysisScopeMode === item.id
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-950 ring-2 ring-emerald-500/15"
-                  : "border-slate-200 bg-slate-50 text-slate-700 hover:border-emerald-300 hover:bg-white"
-              }`}
-            >
-              <span className="block text-xs font-bold">{item.label}</span>
-              <span className="mt-1 block truncate text-[11px] text-slate-500">{item.detail}</span>
-            </button>
-          ))}
-        </div>
-
-        {analysisScopeMode === "sheet" && sheetOptions.length > 1 && (
-          <select
-            value={activeSheetName}
-            onChange={(e) => {
-              onSelectSheet(e.target.value);
-              onChangeSheetRange(e.target.value);
-            }}
-            className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-          >
-            {sheetOptions.map((sheet) => (
-              <option key={sheet.name} value={sheet.name}>
-                {sheet.name} · {sheet.row_count || sheet.records_count || 0} dòng × {sheet.column_count || 0} cột
-              </option>
-            ))}
-          </select>
-        )}
-
-        {analysisScopeMode === "sheets" && sheetOptions.length > 1 && (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {sheetOptions.map((sheet) => {
-              const checked = selectedAnalysisSheets.includes(sheet.name);
-              return (
-                <label key={sheet.name} className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-white">
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onChange={(e) => {
-                      const next = e.target.checked
-                        ? [...selectedAnalysisSheets, sheet.name]
-                        : selectedAnalysisSheets.filter((name) => name !== sheet.name);
-                      onChangeSelectedAnalysisSheets(next);
-                    }}
-                    className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                  />
-                  <span className="min-w-0 truncate">{sheet.name}</span>
-                </label>
-              );
-            })}
-          </div>
-        )}
-
-        {analysisScopeMode === "range" && (
-          <div className="grid gap-3 sm:grid-cols-[220px_minmax(0,1fr)]">
-            <select
-              value={activeSheetName}
-              onChange={(e) => onSelectSheet(e.target.value)}
-              className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-            >
-              {sheetOptions.map((sheet) => (
-                <option key={sheet.name} value={sheet.name}>{sheet.name}</option>
-              ))}
-            </select>
-            <input
-              type="text"
-              value={analysisRange}
-              onChange={(e) => onChangeAnalysisRange(e.target.value)}
-              placeholder={locale === "vi" ? "Để trống = toàn bộ used range, ví dụ A1:Q300" : "Blank = used range, e.g. A1:Q300"}
-              className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 outline-none focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100"
-            />
-          </div>
-        )}
-
+      <div>
         {/* BƯỚC 5: NÚT TIẾP THEO CHUYỂN SANG MÀN PHÂN TÍCH */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5 pt-4 border-t border-slate-200">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3.5 pt-2">
           <div>
             <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />

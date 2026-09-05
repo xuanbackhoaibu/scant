@@ -35,11 +35,12 @@ test("spreadsheet sheet tabs expose an inline action slot for workbook-level act
 
   assert.match(source, /sheetTabsAction\?: React\.ReactNode/);
   assert.match(source, /\{sheetTabsAction && <div className="ml-1 shrink-0">\{sheetTabsAction\}<\/div>\}/);
-  assert.match(workspaceSource, /sheetTabsAction=\{/);
-  assert.match(workspaceSource, /Đọc toàn bộ/);
+  assert.doesNotMatch(workspaceSource, /sheetTabsAction=\{/);
+  assert.doesNotMatch(workspaceSource, /Đọc toàn bộ/);
+  assert.match(workspaceSource, /const handleReadAllSheets = useCallback/);
 });
 
-test("read-all mode visually activates every sheet tab and its workbook action", () => {
+test("read-all mode still visually activates every sheet tab", () => {
   const previewSource = readFileSync(resolve(componentDir, "SpreadsheetPreview.tsx"), "utf8");
   const workspaceSource = readFileSync(resolve(componentDir, "ExcelAnalysisWorkspace.tsx"), "utf8");
 
@@ -47,16 +48,15 @@ test("read-all mode visually activates every sheet tab and its workbook action",
   assert.match(previewSource, /const isVisuallyActive = allSheetsActive \|\| isActive/);
   assert.match(previewSource, /isVisuallyActive\s+\?\s+"border-t-2 border-emerald-600 bg-white text-emerald-800 shadow-sm ring-1 ring-slate-200"/);
   assert.match(workspaceSource, /allSheetsActive=\{chatScopeMode === "workbook"\}/);
-  assert.match(workspaceSource, /chatScopeMode === "workbook"\s+\?\s+"inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-emerald-300 bg-emerald-50/);
 });
 
 test("new project data workflow allows preview column to shrink inside the page grid", () => {
   const source = readFileSync(resolve(appDir, "projects/new/page.tsx"), "utf8");
 
   assert.match(source, /className="mx-auto min-w-0 w-full max-w-\[1600px\] overflow-x-hidden/);
-  assert.match(source, /className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white/);
+  assert.match(source, /className=\{isDataWorkflow \? "min-w-0"/);
   assert.match(source, /isDataWorkflow && dataAnalysisBranch === "interactive"/);
-  assert.match(source, /"2xl:grid-cols-\[300px_minmax\(0,1fr\)\]"/);
+  assert.match(source, /"lg:grid-cols-\[minmax\(0,1fr\)_300px\]" : "grid-cols-1"/);
   assert.match(source, /"2xl:grid-cols-\[300px_minmax\(0,1fr\)_340px\]"/);
   assert.match(source, /<div className="min-w-0 space-y-6 overflow-hidden">/);
   assert.match(source, /<div className="min-w-0 space-y-4 overflow-hidden">/);
@@ -67,8 +67,8 @@ test("direct analysis panel does not duplicate the sheet range selector above th
 
   assert.doesNotMatch(source, /Đọc sheet\/range nào\? \(Tùy chọn\)/);
   assert.doesNotMatch(source, /Scope \/ Range \(Optional\)/);
-  assert.match(source, /Phạm vi phân tích/);
-  assert.match(source, /Sheet \/ vùng cụ thể/);
+  assert.doesNotMatch(source, /Phạm vi phân tích/);
+  assert.doesNotMatch(source, /Sheet \/ vùng cụ thể/);
 });
 
 test("projects shell prevents wide route content from creating page-level horizontal scroll", () => {

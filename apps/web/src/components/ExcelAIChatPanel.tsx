@@ -76,7 +76,7 @@ interface ExcelAIChatPanelProps {
   fileId?: string;
   dataSourceUrl?: string;
   activeSheetName: string;
-  chatScope?: { type: "sheet" | "workbook"; sheets?: string[] };
+  chatScope?: { type: "sheet" | "sheets" | "workbook"; sheet?: string; sheets?: string[] };
   totalRows?: number;
   totalCols?: number;
   selectedRange?: string | null;
@@ -256,8 +256,8 @@ export default function ExcelAIChatPanel({
   onHighlightColorChange,
   locale = "vi",
 }: ExcelAIChatPanelProps) {
-  const isWorkbookScope = chatScope.type === "workbook";
-  const scopeLabel = isWorkbookScope ? (locale === "vi" ? "Toàn bộ workbook" : "Entire workbook") : activeSheetName;
+  const isWorkbookScope = chatScope.type === "workbook" || chatScope.type === "sheets";
+  const scopeLabel = chatScope.type === "sheets" ? (chatScope.sheets || []).join(", ") : isWorkbookScope ? (locale === "vi" ? "Toàn bộ workbook" : "Entire workbook") : (chatScope.sheet || activeSheetName);
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "initial-ai",
@@ -424,7 +424,7 @@ export default function ExcelAIChatPanel({
     event?.stopPropagation();
 
     const query = (textToSend || inputText).trim();
-    if (!query || isLoading) return;
+    if (!query || isLoading || (chatScope.type === "sheets" && !chatScope.sheets?.length)) return;
     const requestedHighlightColor = resolveChatPromptHighlightColor(query, activeHighlightColor);
     if (requestedHighlightColor.isExplicit) {
       onHighlightColorChange?.(requestedHighlightColor.color);
@@ -458,15 +458,15 @@ export default function ExcelAIChatPanel({
       if (dataSourceUrl) {
         formData.append("data_source_url", dataSourceUrl);
       }
-      formData.append("sheet_name", activeSheetName);
+      formData.append("sheet_name", chatScope.type === "sheet" ? (chatScope.sheet || activeSheetName) : activeSheetName);
       formData.append("scope", JSON.stringify(chatScope));
       formData.append("message", query);
       formData.append("highlight_color", requestedHighlightColor.color);
-      const shouldUseSelectedRange = shouldUseSelectedRangeForChat(query, selectedRange);
+      const shouldUseSelectedRange = !isWorkbookScope && (!chatScope.sheet || chatScope.sheet === activeSheetName) && shouldUseSelectedRangeForChat(query, selectedRange);
       if (shouldUseSelectedRange) {
         formData.append("selected_range", selectedRange as string);
       }
-      formData.append("conversation_id", isWorkbookScope ? "excel_chat_workbook" : `excel_chat_${activeSheetName}`);
+      formData.append("conversation_id", chatScope.type === "sheets" ? `excel_chat_sheets_${JSON.stringify(chatScope.sheets)}` : isWorkbookScope ? "excel_chat_workbook" : `excel_chat_${activeSheetName}`);
 
       const res = await api.data.workbookChat(formData);
 
@@ -610,7 +610,7 @@ export default function ExcelAIChatPanel({
             </div>
             <p className="text-[10px] text-slate-400">
               {isWorkbookScope
-                ? `${locale === "vi" ? "Hỏi đáp toàn bộ workbook" : "Whole-workbook Q&A"} · ${chatScope.sheets?.length || 0} ${locale === "vi" ? "sheet" : "sheets"}`
+                ? `${locale === "vi" ? (chatScope.type === "sheets" ? "Hỏi đáp các bảng đã chọn" : "Hỏi đáp toàn bộ workbook") : (chatScope.type === "sheets" ? "Selected sheets Q&A" : "Whole-workbook Q&A")} · ${chatScope.sheets?.length || 0} ${locale === "vi" ? "sheet" : "sheets"}`
                 : `${locale === "vi" ? "Hỏi đáp tự nhiên về bảng tính" : "Natural language workbook assistant"} · ${totalRows.toLocaleString()} ${locale === "vi" ? "dòng" : "rows"} · ${totalCols} ${locale === "vi" ? "cột" : "cols"}`}
             </p>
           </div>
@@ -1045,7 +1045,7 @@ export default function ExcelAIChatPanel({
           <button
             type="button"
             onClick={(e) => handleSendMessage(undefined, e)}
-            disabled={!inputText.trim() || isLoading}
+            disabled={!inputText.trim() || isLoading || (chatScope.type === "sheets" && !chatScope.sheets?.length)}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs transition hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
             title={locale === "vi" ? "Gửi câu hỏi" : "Send message"}
           >

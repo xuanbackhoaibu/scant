@@ -11,7 +11,8 @@ type ExcelAnalysisSnapshotInput = {
   analysisPrompt?: string;
   activeHighlightColor?: string;
   analysisActionStatus?: string | null;
-  chatScopeMode?: "sheet" | "workbook";
+  chatScopeMode?: "sheet" | "sheets" | "workbook";
+  selectedAnalysisSheets?: string[];
   analysisHistory?: unknown[];
   analysisBySheet?: Record<string, unknown>;
   analysisLayersBySheet?: Record<string, unknown>;
@@ -34,6 +35,7 @@ export function createExcelAnalysisSnapshot({
   activeHighlightColor,
   analysisActionStatus,
   chatScopeMode,
+  selectedAnalysisSheets,
   analysisHistory,
   analysisBySheet,
   analysisLayersBySheet,
@@ -46,7 +48,8 @@ export function createExcelAnalysisSnapshot({
     analysisPrompt: analysisPrompt || "",
     activeHighlightColor: activeHighlightColor || "#FEF08A",
     analysisActionStatus: analysisActionStatus || null,
-    chatScopeMode: chatScopeMode === "workbook" ? "workbook" : "sheet",
+    chatScopeMode: chatScopeMode === "workbook" ? "workbook" : chatScopeMode === "sheets" ? "sheets" : "sheet",
+    selectedAnalysisSheets: Array.isArray(selectedAnalysisSheets) ? selectedAnalysisSheets : [],
     analysisHistory: Array.isArray(analysisHistory) ? analysisHistory.slice(0, 8) : [],
     analysisBySheet: analysisBySheet || {},
     analysisLayersBySheet: analysisLayersBySheet || {},
@@ -65,7 +68,8 @@ export function parseExcelAnalysisSnapshot(raw: unknown): ExcelAnalysisSnapshot 
       analysisPrompt: typeof snapshot.analysisPrompt === "string" ? snapshot.analysisPrompt : "",
       activeHighlightColor: typeof snapshot.activeHighlightColor === "string" ? snapshot.activeHighlightColor : "#FEF08A",
       analysisActionStatus: typeof snapshot.analysisActionStatus === "string" ? snapshot.analysisActionStatus : null,
-      chatScopeMode: snapshot.chatScopeMode === "workbook" ? "workbook" : "sheet",
+      chatScopeMode: snapshot.chatScopeMode === "workbook" ? "workbook" : snapshot.chatScopeMode === "sheets" ? "sheets" : "sheet",
+      selectedAnalysisSheets: Array.isArray(snapshot.selectedAnalysisSheets) ? snapshot.selectedAnalysisSheets.filter((name: unknown) => typeof name === "string") : [],
       analysisHistory: Array.isArray(snapshot.analysisHistory) ? snapshot.analysisHistory : [],
       analysisBySheet:
         snapshot.analysisBySheet && typeof snapshot.analysisBySheet === "object"
