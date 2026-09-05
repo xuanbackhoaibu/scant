@@ -201,6 +201,8 @@ class Report(Base):
     comments = relationship("Comment", back_populates="report", cascade="all, delete-orphan")
     exports = relationship("ExportRecord", back_populates="report", cascade="all, delete-orphan")
     image_assets = relationship("ImageAsset", back_populates="report", cascade="all, delete-orphan")
+    claims = relationship("Claim", back_populates="report", cascade="all, delete-orphan")
+    citations = relationship("Citation", back_populates="report", cascade="all, delete-orphan")
 
 
 class ImageAsset(Base):
@@ -254,6 +256,7 @@ class ReportSection(Base):
     report = relationship("Report", back_populates="sections")
     parent = relationship("ReportSection", remote_side=[id], backref="children")
     citations = relationship("Citation", back_populates="section", cascade="all, delete-orphan")
+    claims = relationship("Claim", back_populates="section", cascade="all, delete-orphan")
     claim_sources = relationship("ClaimSource", back_populates="section", cascade="all, delete-orphan")
 
 
@@ -277,38 +280,109 @@ class Source(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     title = Column(String(500), nullable=False)
+    subtitle = Column(String(500), nullable=True)
     url = Column(String(1000), nullable=True)
+    canonical_url = Column(String(1000), nullable=True)
     authors = Column(String(500), nullable=True)
+    organization = Column(String(255), nullable=True)
     publisher = Column(String(255), nullable=True)
+    publication_name = Column(String(255), nullable=True)
+    publication_year = Column(Integer, nullable=True)
     published_date = Column(String(50), nullable=True)
+    doi = Column(String(100), nullable=True)
     accessed_date = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
-    source_type = Column(String(50), default="website", nullable=False)  # official_doc, paper, book, website, university, standard, uploaded
-    reliability_score = Column(Float, default=0.8, nullable=False)  # 0.0 to 1.0
+    source_type = Column(String(50), default="WEB_ARTICLE", nullable=False)  # OFFICIAL_DOCUMENTATION, ACADEMIC_PAPER, BOOK, REPORT, WEB_ARTICLE, GOVERNMENT_SOURCE, ORGANIZATION_SOURCE, UPLOADED_PDF, UPLOADED_DOCX, UPLOADED_EXCEL, DATASET, INTERNAL_DATA, OTHER
+    provider = Column(String(50), nullable=True)  # microsoft_learn, crossref, openalex, arxiv, semantic_scholar, web, uploaded_file, dataset, manual
+    provider_source_id = Column(String(255), nullable=True)
+    language = Column(String(20), default="vi", nullable=False)
+    abstract = Column(Text, nullable=True)
+    reliability_score = Column(Float, default=0.8, nullable=False)  # 0.0 to 1.0 (backward compatibility)
     summary = Column(Text, nullable=True)
     content_extracted = Column(Text, nullable=True)
+    access_status = Column(String(50), default="open", nullable=False)  # open, restricted, paywalled, local
+    verification_status = Column(String(50), default="UNVERIFIED", nullable=False)  # VERIFIED, PARTIALLY_VERIFIED, UNVERIFIED, BROKEN_SOURCE, MISSING_METADATA, DUPLICATE, REQUIRES_REVIEW
+    verification_score = Column(Integer, default=0, nullable=False)  # 0 to 100 based on genuine formula
+    verification_details_json = Column(JSON, default=dict, nullable=False)
+    domain_trust = Column(String(50), default="UNKNOWN", nullable=False)  # OFFICIAL, ACADEMIC, GOVERNMENT, ORGANIZATION, GENERAL_WEB, UNKNOWN
+    file_id = Column(String(36), nullable=True)
+    dataset_id = Column(String(36), nullable=True)
     metadata_json = Column(JSON, default=dict, nullable=False)
     content_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
 
     project = relationship("Project", back_populates="sources")
+    evidences = relationship("Evidence", back_populates="source", cascade="all, delete-orphan")
     citations = relationship("Citation", back_populates="source", cascade="all, delete-orphan")
     claim_sources = relationship("ClaimSource", back_populates="source", cascade="all, delete-orphan")
+
+
+class Evidence(Base):
+    __tablename__ = "evidences"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    source_id = Column(String(36), ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    evidence_type = Column(String(50), default="WEB_TEXT", nullable=False)  # WEB_TEXT, PDF_TEXT, DOCX_TEXT, DATASET_RANGE, EXCEL_RANGE, MANUAL_SELECTION
+    quote = Column(Text, nullable=False)
+    normalized_text = Column(Text, nullable=True)
+    page_number = Column(Integer, nullable=True)
+    section_title = Column(String(255), nullable=True)
+    paragraph_index = Column(Integer, nullable=True)
+    start_offset = Column(Integer, nullable=True)
+    end_offset = Column(Integer, nullable=True)
+    sheet_name = Column(String(100), nullable=True)
+    cell_range = Column(String(50), nullable=True)
+    operation = Column(String(50), nullable=True)  # COUNT, SUM, AVG, MIN, MAX, FILTER, DUPLICATE_CHECK, CUSTOM_ANALYSIS
+    calculation_result = Column(String(255), nullable=True)
+    source_url = Column(String(1000), nullable=True)
+    metadata_json = Column(JSON, default=dict, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+
+    source = relationship("Source", back_populates="evidences")
+    citations = relationship("Citation", back_populates="evidence")
+
+
+class Claim(Base):
+    __tablename__ = "claims"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    report_id = Column(String(36), ForeignKey("reports.id", ondelete="CASCADE"), nullable=False)
+    section_id = Column(String(36), ForeignKey("report_sections.id", ondelete="CASCADE"), nullable=False)
+    claim_text = Column(Text, nullable=False)
+    claim_type = Column(String(50), default="FACT", nullable=False)  # FACT, NUMBER, STATISTIC, TECHNICAL_STATEMENT, OPINION, INFERENCE, DATA_ANALYSIS, GENERAL_EXPLANATION
+    requires_citation = Column(Boolean, default=True, nullable=False)
+    verification_status = Column(String(50), default="NEEDS_REVIEW", nullable=False)  # VERIFIED, WEAK_EVIDENCE, MISSING_EVIDENCE, BROKEN_SOURCE, MISMATCH, NEEDS_REVIEW
+    created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
+
+    report = relationship("Report", back_populates="claims")
+    section = relationship("ReportSection", back_populates="claims")
+    citations = relationship("Citation", back_populates="claim")
 
 
 class Citation(Base):
     __tablename__ = "citations"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
+    report_id = Column(String(36), ForeignKey("reports.id", ondelete="CASCADE"), nullable=True)
     report_section_id = Column(String(36), ForeignKey("report_sections.id", ondelete="CASCADE"), nullable=False)
     source_id = Column(String(36), ForeignKey("sources.id", ondelete="CASCADE"), nullable=False)
+    evidence_id = Column(String(36), ForeignKey("evidences.id", ondelete="SET NULL"), nullable=True)
+    claim_id = Column(String(36), ForeignKey("claims.id", ondelete="SET NULL"), nullable=True)
+    citation_number = Column(Integer, default=1, nullable=False)
     citation_style = Column(String(50), default="IEEE", nullable=False)  # IEEE, APA, Harvard, MLA, Vancouver
     citation_key = Column(String(50), nullable=False)  # e.g. "[1]", "(Smith, 2024)"
-    locator = Column(String(100), nullable=True)  # e.g. "p. 45" or "Section 3"
+    locator = Column(String(100), nullable=True)  # e.g. "p. 45" or "Section 3" or "Sheet1!B2:D10"
     evidence_text = Column(Text, nullable=True)
+    verification_status = Column(String(50), default="VERIFIED", nullable=False)  # VERIFIED, WEAK_EVIDENCE, MISSING_EVIDENCE, BROKEN_SOURCE, MISMATCH, NEEDS_REVIEW
+    support_level = Column(String(50), default="STRONG", nullable=False)  # STRONG, MODERATE, WEAK, UNSUPPORTED
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
 
+    report = relationship("Report", back_populates="citations")
     section = relationship("ReportSection", back_populates="citations")
     source = relationship("Source", back_populates="citations")
+    evidence = relationship("Evidence", back_populates="citations")
+    claim = relationship("Claim", back_populates="citations")
 
 
 class ClaimSource(Base):
@@ -526,14 +600,21 @@ class Automation(Base):
     project_id = Column(String(36), ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
     trigger_type = Column(String(50), default="manual", nullable=False)  # manual, schedule, data_refresh
-    cron_expression = Column(String(100), nullable=True)  # e.g. "0 8 * * 1"
+    cron_expression = Column(String(100), nullable=True)  # e.g. "0 8 * * 1", "0 9 * * *", "@daily"
+    timezone = Column(String(50), default="Asia/Ho_Chi_Minh", nullable=False)
     data_source_id = Column(String(36), nullable=True)
+    source_type = Column(String(50), default="file", nullable=False)  # file, dataset, all_project_files
+    source_config_json = Column(JSON, default=dict, nullable=False)  # {sheet_name, cell_range, ...}
     template_id = Column(String(36), nullable=True)
+    analysis_prompt = Column(Text, nullable=True)
+    analysis_mode = Column(String(50), default="comprehensive", nullable=False)  # comprehensive, kpi_financial, summary, academic
     report_title_pattern = Column(String(255), default="Báo cáo Tự động {date}", nullable=False)
     export_formats_json = Column(JSON, default=list, nullable=False)  # ["docx", "pdf"]
     is_active = Column(Boolean, default=True, nullable=False)
     last_run_at = Column(DateTime(timezone=True), nullable=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=get_utc_now, onupdate=get_utc_now, nullable=False)
 
@@ -548,9 +629,13 @@ class AutomationRun(Base):
     automation_id = Column(String(36), ForeignKey("automations.id", ondelete="CASCADE"), nullable=False)
     report_id = Column(String(36), nullable=True)
     status = Column(String(50), default="queued", nullable=False)  # queued, running, completed, failed, cancelled
-    trigger_source = Column(String(50), default="manual", nullable=False)
+    trigger_source = Column(String(50), default="manual", nullable=False)  # manual, schedule, retry
     retry_count = Column(Integer, default=0, nullable=False)
+    duration_ms = Column(Integer, default=0, nullable=False)
     log_messages_json = Column(JSON, default=list, nullable=False)
+    source_snapshot_json = Column(JSON, default=dict, nullable=False)
+    output_files_json = Column(JSON, default=list, nullable=False)
+    failed_step = Column(String(100), nullable=True)
     error_message = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), default=get_utc_now, nullable=False)
     finished_at = Column(DateTime(timezone=True), nullable=True)

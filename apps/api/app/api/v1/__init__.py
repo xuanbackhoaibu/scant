@@ -19,6 +19,7 @@ from app.api.v1.metrics import router as metrics_router
 from app.api.v1.document_intelligence import router as document_intelligence_router
 from app.api.v1.brand_kit import router as brand_kit_router
 from app.api.v1.assets import router as assets_router
+from app.api.v1.sources import router as sources_router
 
 api_router = APIRouter()
 api_router.include_router(health_router)
@@ -41,5 +42,6 @@ api_router.include_router(metrics_router)
 api_router.include_router(document_intelligence_router)
 api_router.include_router(brand_kit_router)
 api_router.include_router(assets_router)
+api_router.include_router(sources_router)
 
 __all__ = ["api_router"]

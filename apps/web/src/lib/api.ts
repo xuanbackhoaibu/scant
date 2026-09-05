@@ -138,15 +138,17 @@ export const api = {
 
   // Research
   research: {
-    searchWeb: (query: string, maxResults: number = 6) =>
-      request<any>(`/research/direct-search?query=${encodeURIComponent(query)}&max_results=${maxResults}`, { method: "POST" }),
-    search: (projectId: string, query: string, mode: string = "standard") =>
+    searchWeb: (query: string, maxResults: number = 10, mode: string = "deep") =>
+      request<any>(`/research/direct-search?query=${encodeURIComponent(query)}&max_results=${maxResults}&mode=${mode}`, { method: "POST" }),
+    search: (projectId: string, query: string, mode: string = "deep") =>
       request<any>(`/research/search?project_id=${projectId}&query=${encodeURIComponent(query)}&mode=${mode}`, { method: "POST" }),
     listSources: (projectId: string) => request<any[]>(`/research/sources/project/${projectId}`),
     addSource: (data: any) => request<any>("/research/sources", { method: "POST", body: JSON.stringify(data) }),
     traceCitation: (citationId: string) => request<any>(`/research/citations/trace/${citationId}`),
     resolveIdentifier: (inputStr: string) =>
       request<any>(`/research/resolve-identifier?input_str=${encodeURIComponent(inputStr)}`, { method: "POST" }),
+    exportCitations: (sources: any[], style: string = "IEEE") =>
+      request<any>("/research/export", { method: "POST", body: JSON.stringify({ sources, style }) }),
   },
 
   // Data
@@ -192,9 +194,16 @@ export const api = {
   // Automations
   automations: {
     list: () => request<any[]>("/automations"),
+    get: (id: string) => request<any>(`/automations/${id}`),
     create: (data: any) => request<any>("/automations", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: any) => request<any>(`/automations/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    delete: (id: string) => request<any>(`/automations/${id}`, { method: "DELETE" }),
+    pause: (id: string) => request<any>(`/automations/${id}/pause`, { method: "POST" }),
+    resume: (id: string) => request<any>(`/automations/${id}/resume`, { method: "POST" }),
     trigger: (automationId: string) => request<any>(`/automations/${automationId}/trigger`, { method: "POST" }),
     runs: (automationId: string) => request<any[]>(`/automations/${automationId}/runs`),
+    getRun: (runId: string) => request<any>(`/automations/runs/${runId}`),
+    retryRun: (runId: string) => request<any>(`/automations/runs/${runId}/retry`, { method: "POST" }),
   },
 
   // Admin
@@ -222,6 +231,76 @@ export const api = {
     exportPdf: (data: any) => request<any>("/exports/pdf", { method: "POST", body: JSON.stringify(data) }),
     previewReportHtml: (reportId: string) => request<any>(`/exports/report/${reportId}/preview-html`),
     getDownloadUrl: (filename: string) => `${API_BASE}/exports/download/${filename}`,
+  },
+
+  // Sources & Verification
+  sources: {
+    list: (projectId: string, params?: { source_type?: string; verification_status?: string; search?: string }) => {
+      const sp = new URLSearchParams();
+      if (params?.source_type) sp.append("source_type", params.source_type);
+      if (params?.verification_status) sp.append("verification_status", params.verification_status);
+      if (params?.search) sp.append("search", params.search);
+      const q = sp.toString() ? `?${sp.toString()}` : "";
+      return request<{ sources: any[]; stats: any }>(`/projects/${projectId}/sources${q}`);
+    },
+    get: (sourceId: string) => request<any>(`/sources/${sourceId}`),
+    delete: (sourceId: string, force: boolean = false) =>
+      request<any>(`/sources/${sourceId}?force=${force}`, { method: "DELETE" }),
+    search: (data: { query: string; projectId?: string; providers?: string[]; sort_by?: string; limit?: number }) => {
+      const endpoint = data.projectId ? `/projects/${data.projectId}/sources/search` : "/sources/search";
+      return request<{ query: string; total: number; results: any[] }>(endpoint, {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    importSearch: (projectId: string, sources: any[]) =>
+      request<any>(`/projects/${projectId}/sources/search/import`, {
+        method: "POST",
+        body: JSON.stringify({ sources }),
+      }),
+    addUrl: (projectId: string, data: { url: string; title?: string; notes?: string }) =>
+      request<any>(`/projects/${projectId}/sources/url`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    uploadFile: (projectId: string, formData: FormData) =>
+      request<any>(`/projects/${projectId}/sources/upload`, {
+        method: "POST",
+        body: formData,
+      }),
+    verify: (sourceId: string) =>
+      request<any>(`/sources/${sourceId}/verify`, { method: "POST" }),
+    getEvidences: (sourceId: string) =>
+      request<{ source_id: string; total: number; evidences: any[] }>(`/sources/${sourceId}/evidences`),
+    addEvidence: (sourceId: string, data: any) =>
+      request<any>(`/sources/${sourceId}/evidences`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    deleteEvidence: (evidenceId: string) =>
+      request<any>(`/evidences/${evidenceId}`, { method: "DELETE" }),
+  },
+
+  // Citations
+  citations: {
+    listByReport: (reportId: string) =>
+      request<{ report_id: string; total: number; citations: any[] }>(`/reports/${reportId}/citations`),
+    create: (reportId: string, data: any) =>
+      request<any>(`/reports/${reportId}/citations`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    reindex: (reportId: string, style: string = "IEEE") =>
+      request<any>(`/reports/${reportId}/citations/reindex?style=${style}`, { method: "POST" }),
+    coverage: (reportId: string) =>
+      request<any>(`/reports/${reportId}/citations/coverage`),
+    bibliography: (reportId: string, style: string = "IEEE") =>
+      request<any>(`/reports/${reportId}/bibliography?style=${style}`),
+    verifySupport: (data: { claim_text: string; evidence_text: string }) =>
+      request<any>("/citations/verify-support", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
   },
 
   // Health

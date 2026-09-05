@@ -1285,8 +1285,15 @@ export default function ExcelAnalysisWorkspace({
                   {/* Dismiss Banner Button */}
                   <button
                     type="button"
-                    onClick={() => setLastAnalysisResult(null)}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-amber-100/70 hover:text-slate-700 transition active:scale-95"
+                    onClick={() => {
+                      setLastAnalysisResultBySheet((prev) => {
+                        const next = { ...prev };
+                        delete next[activeSheetName];
+                        delete next["workbook"];
+                        return next;
+                      });
+                    }}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-amber-100/70 hover:text-slate-700 transition active:scale-95 cursor-pointer"
                     title={locale === "vi" ? "Đóng thông báo này" : "Dismiss finding"}
                     aria-label={locale === "vi" ? "Đóng thông báo này" : "Dismiss finding"}
                   >

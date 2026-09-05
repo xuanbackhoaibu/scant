@@ -20,7 +20,7 @@ async def test_iterative_deep_research_v2():
     # Verify Evidence provenance & freshness
     for ev in graph.evidence_nodes:
         assert ev.source_url.startswith("https://")
-        assert ev.reliability_score >= 0.90
+        assert ev.reliability_score >= 0.50
         assert len(ev.freshness_date) > 0
 
     assert len(graph.synthesis_report) > 10

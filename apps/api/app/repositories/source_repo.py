@@ -2,7 +2,7 @@ from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from app.models.entities import Source, Citation, ClaimSource, Template, TemplateVersion
+from app.models.entities import Source, Citation, ClaimSource, Template, TemplateVersion, Evidence, Claim
 from app.repositories.base import BaseRepository
 
 
@@ -14,7 +14,41 @@ class SourceRepository(BaseRepository[Source]):
         result = await db.execute(
             select(Source)
             .where(Source.project_id == project_id)
-            .order_by(Source.created_at.desc())
+            .order_by(Source.verification_score.desc(), Source.reliability_score.desc(), Source.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+
+class EvidenceRepository(BaseRepository[Evidence]):
+    def __init__(self):
+        super().__init__(Evidence)
+
+    async def get_by_source(self, db: AsyncSession, source_id: str) -> List[Evidence]:
+        result = await db.execute(
+            select(Evidence)
+            .where(Evidence.source_id == source_id)
+            .order_by(Evidence.page_number.asc(), Evidence.paragraph_index.asc(), Evidence.created_at.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_by_project(self, db: AsyncSession, project_id: str) -> List[Evidence]:
+        result = await db.execute(
+            select(Evidence)
+            .where(Evidence.project_id == project_id)
+            .order_by(Evidence.created_at.desc())
+        )
+        return list(result.scalars().all())
+
+
+class ClaimRepository(BaseRepository[Claim]):
+    def __init__(self):
+        super().__init__(Claim)
+
+    async def get_by_report(self, db: AsyncSession, report_id: str) -> List[Claim]:
+        result = await db.execute(
+            select(Claim)
+            .where(Claim.report_id == report_id)
+            .order_by(Claim.created_at.asc())
         )
         return list(result.scalars().all())
 
@@ -27,7 +61,24 @@ class CitationRepository(BaseRepository[Citation]):
         result = await db.execute(
             select(Citation)
             .where(Citation.report_section_id == section_id)
-            .options(selectinload(Citation.source))
+            .options(selectinload(Citation.source), selectinload(Citation.evidence))
+            .order_by(Citation.citation_number.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_by_report(self, db: AsyncSession, report_id: str) -> List[Citation]:
+        result = await db.execute(
+            select(Citation)
+            .where(Citation.report_id == report_id)
+            .options(selectinload(Citation.source), selectinload(Citation.evidence))
+            .order_by(Citation.citation_number.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_by_source(self, db: AsyncSession, source_id: str) -> List[Citation]:
+        result = await db.execute(
+            select(Citation)
+            .where(Citation.source_id == source_id)
         )
         return list(result.scalars().all())
 
@@ -47,6 +98,8 @@ class TemplateRepository(BaseRepository[Template]):
 
 
 source_repo = SourceRepository()
+evidence_repo = EvidenceRepository()
+claim_repo = ClaimRepository()
 citation_repo = CitationRepository()
 claim_source_repo = BaseRepository[ClaimSource](ClaimSource)
 template_repo = TemplateRepository()

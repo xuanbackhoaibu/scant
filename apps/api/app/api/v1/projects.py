@@ -17,6 +17,17 @@ async def list_projects(
     db: AsyncSession = Depends(get_db),
 ):
     projects = await project_repo.get_by_user(db, current_user.id)
+    if not projects:
+        default_proj = await project_repo.create(db, obj_in={
+            "user_id": current_user.id,
+            "name": "Dự Án Nghiên Cứu & Trích Dẫn Mặc Định",
+            "type": "research",
+            "description": "Không gian nghiên cứu, quản lý tài liệu và kiểm chứng trích dẫn",
+            "settings_json": {},
+            "metadata_json": {},
+            "topic_details_json": {},
+        })
+        return [ProjectResponse.model_validate(default_proj)]
     return [ProjectResponse.model_validate(p) for p in projects]
 
 
