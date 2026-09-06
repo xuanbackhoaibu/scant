@@ -60,6 +60,7 @@ class OpenAIProvider(AIProvider):
             return {
                 "text": text,
                 "tokens_used": tokens_used,
+                "usage": data.get("usage", {}),
                 "provider": "openai",
                 "model": target_model,
             }

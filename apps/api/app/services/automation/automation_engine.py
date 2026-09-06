@@ -630,6 +630,8 @@ Hãy cung cấp bản phân tích gồm 4 phần (JSON object duy nhất, không
 }}
 """
                 ai_req = AIRequest(
+                    user_id=automation.user_id,
+                    project_id=project.id,
                     task_type=AITaskType.DATA_NARRATIVE,
                     prompt=ai_prompt,
                     max_tokens=1500,

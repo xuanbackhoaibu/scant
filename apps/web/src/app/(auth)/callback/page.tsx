@@ -45,11 +45,21 @@ function AuthCallbackContent() {
   const { t } = useTranslation();
 
   useEffect(() => {
+    const connection = searchParams?.get("google_connection");
+    if (connection) {
+      if (window.opener) {
+        window.opener.postMessage({type:"google-sheets-connection",ok:connection==="success",error:searchParams?.get("connection_error")}, window.location.origin);
+        window.close();
+      } else {
+        router.replace(`/settings?google_connection=${encodeURIComponent(connection)}`);
+      }
+      return;
+    }
     const token = searchParams?.get("token");
     const encodedUser = searchParams?.get("user");
     const err = searchParams?.get("error");
     const from = searchParams?.get("from");
-    const redirectTarget = from && from.startsWith("/") ? from : "/";
+    const redirectTarget = from && from.startsWith("/") && !from.startsWith("//") && !from.includes("\\") ? from : "/";
 
     if (err) {
       setError(decodeURIComponent(err));

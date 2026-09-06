@@ -68,23 +68,23 @@ async def test_admin_console_access_control(client: AsyncClient):
     dash_res = await client.get("/api/v1/admin/dashboard", headers=admin_headers)
     assert dash_res.status_code == 200
     metrics = dash_res.json()
-    assert "total_users" in metrics
-    assert "providers_health" in metrics
+    assert any(metric["key"] == "total_users" for metric in metrics["metrics"])
+    assert "unavailable" in metrics
 
     # Super Admin lists users
     users_res = await client.get("/api/v1/admin/users", headers=admin_headers)
     assert users_res.status_code == 200
-    assert len(users_res.json()) >= 2
+    assert len(users_res.json()["items"]) >= 2
 
     # Super Admin updates user plan
     target_id = reg_normal.json()["user"]["id"]
     patch_res = await client.patch(f"/api/v1/admin/users/{target_id}", json={
-        "plan_tier": "enterprise"
+        "plan_tier": "enterprise", "reason": "Approved enterprise upgrade"
     }, headers=admin_headers)
     assert patch_res.status_code == 200
-    assert patch_res.json()["plan_tier"] == "enterprise"
+    assert patch_res.json()["plan"] == "enterprise"
 
     # AI Ops status
-    ops_res = await client.get("/api/v1/admin/ai-ops", headers=admin_headers)
+    ops_res = await client.get("/api/v1/admin/system/health", headers=admin_headers)
     assert ops_res.status_code == 200
-    assert "circuit_breaker_status" in ops_res.json()
+    assert "database" in ops_res.json()

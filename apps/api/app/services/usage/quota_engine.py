@@ -2,8 +2,11 @@ import hashlib
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from app.models.entities import AIUsageEvent, UserQuota, Report, Source, UploadedFile
+from sqlalchemy import select, func, update
+from app.models.entities import AIUsageEvent, UserQuota, Report, Source, UploadedFile, User, Project, ExportRecord
+from datetime import datetime, timezone
+from app.services.billing.plan_definitions import get_plan_entitlements
+from app.services.admin.plan_service import next_month
 from app.repositories.base import BaseRepository
 
 
@@ -47,17 +50,34 @@ class QuotaEngine:
         self.quota_repo = BaseRepository[UserQuota](UserQuota)
 
     async def get_or_create_user_quota(self, db: AsyncSession, user_id: str) -> UserQuota:
-        stmt = select(UserQuota).where(UserQuota.user_id == user_id)
+        await db.execute(update(User).where(User.id == user_id).values(updated_at=User.updated_at).execution_options(synchronize_session=False))
+        stmt = select(UserQuota).where(UserQuota.user_id == user_id).with_for_update().execution_options(populate_existing=True)
         res = await db.execute(stmt)
         quota = res.scalar_one_or_none()
         if not quota:
-            quota = await self.quota_repo.create(db, obj_in={
+            user = await db.get(User, user_id)
+            plan = get_plan_entitlements(user.plan if user else "free")
+            quota = UserQuota(**{
                 "user_id": user_id,
-                "monthly_token_limit": 1_000_000,
-                "monthly_cost_limit_usd": 20.0,
+                "monthly_token_limit": plan.monthly_tokens_limit,
+                "monthly_cost_limit_usd": plan.monthly_ai_budget_usd,
                 "tokens_used_this_month": 0,
                 "cost_usd_this_month": 0.0,
+                "reset_at": next_month(),
             })
+            db.add(quota)
+            await db.flush()
+        now = datetime.now(timezone.utc)
+        boundary = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        reset = quota.reset_at.replace(tzinfo=quota.reset_at.tzinfo or timezone.utc) if quota.reset_at else None
+        if reset and reset <= boundary:
+            quota.tokens_used_this_month = 0
+            quota.cost_usd_this_month = 0
+            quota.reset_at = next_month()
+        elif not reset or reset < now:
+            # Legacy reset_at stored last-reset time; preserve current-period usage.
+            quota.reset_at = next_month()
+        await db.flush()
         return quota
 
     async def record_usage_event(
@@ -75,7 +95,7 @@ class QuotaEngine:
         latency_ms: int,
         status: str = "success",
     ) -> AIUsageEvent:
-        event = await self.usage_repo.create(db, obj_in={
+        event = AIUsageEvent(**{
             "user_id": user_id,
             "project_id": project_id,
             "task_type": task_type,
@@ -90,12 +110,13 @@ class QuotaEngine:
             "status": status,
         })
 
+        db.add(event)
         if user_id:
             quota = await self.get_or_create_user_quota(db, user_id)
-            await self.quota_repo.update(db, db_obj=quota, obj_in={
-                "tokens_used_this_month": quota.tokens_used_this_month + input_tokens + output_tokens,
-                "cost_usd_this_month": quota.cost_usd_this_month + estimated_cost_usd,
-            })
+            await db.execute(update(UserQuota).where(UserQuota.id==quota.id).values(
+                tokens_used_this_month=UserQuota.tokens_used_this_month+input_tokens+output_tokens,
+                cost_usd_this_month=UserQuota.cost_usd_this_month+estimated_cost_usd))
+        await db.flush()
 
         return event
 
@@ -161,28 +182,19 @@ class QuotaEngine:
     async def get_user_summary(self, db: AsyncSession, user_id: str) -> Dict[str, Any]:
         quota = await self.get_or_create_user_quota(db, user_id)
 
-        # Count generated reports
-        rep_stmt = select(func.count(Report.id)).where(Report.project_id.in_(
-            select(Report.project_id)
-        ))
-        rep_count_res = await db.execute(rep_stmt)
-        reports_count = rep_count_res.scalar() or 0
-
-        # Count sources
-        src_stmt = select(func.count(Source.id))
-        src_count_res = await db.execute(src_stmt)
-        sources_count = src_count_res.scalar() or 0
-
+        project_ids = select(Project.id).where(Project.user_id == user_id)
+        reports_count = await db.scalar(select(func.count()).select_from(Report).where(Report.project_id.in_(project_ids))) or 0
+        sources_count = await db.scalar(select(func.count()).select_from(Source).where(Source.project_id.in_(project_ids))) or 0
+        storage_bytes = await db.scalar(select(func.sum(UploadedFile.file_size)).where(UploadedFile.project_id.in_(project_ids))) or 0
+        exports_count = await db.scalar(select(func.count()).select_from(ExportRecord).join(Report, ExportRecord.report_id == Report.id).where(Report.project_id.in_(project_ids))) or 0
         return {
             "monthly_token_limit": quota.monthly_token_limit,
             "tokens_used_this_month": quota.tokens_used_this_month,
             "monthly_cost_limit_usd": quota.monthly_cost_limit_usd,
             "cost_usd_this_month": round(quota.cost_usd_this_month, 4),
             "remaining_budget_usd": round(max(0.0, quota.monthly_cost_limit_usd - quota.cost_usd_this_month), 4),
-            "documents_generated": reports_count,
-            "research_sources_count": sources_count,
-            "storage_used_mb": 14.5,
-            "exports_count": 8,
+            "documents_generated": reports_count, "research_sources_count": sources_count,
+            "storage_used_mb": round(storage_bytes / 1048576, 4), "exports_count": exports_count,
         }
 
 

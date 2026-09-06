@@ -46,6 +46,8 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 @app.middleware("http")
 async def collect_http_metrics(request, call_next):
+    from app.core.usage_context import usage_user_id
+    identity_token = usage_user_id.set(None)
     start = time.time()
     status_code = 500
     try:
@@ -55,6 +57,7 @@ async def collect_http_metrics(request, call_next):
     finally:
         duration_ms = int((time.time() - start) * 1000)
         metrics_collector.record_http_request(duration_ms, status_code=status_code)
+        usage_user_id.reset(identity_token)
 
 
 @app.get("/")

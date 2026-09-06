@@ -12,6 +12,7 @@ class MetricsCollector:
         self.reset()
 
     def reset(self):
+        self._started_at = time.monotonic()
         self._http_latencies: List[int] = []
         self._ai_latencies: List[int] = []
         self._ai_success_count: int = 0
@@ -45,10 +46,10 @@ class MetricsCollector:
         self._research_durations.append(duration_ms)
 
     def get_summary(self) -> Dict[str, Any]:
-        http_p50 = sorted(self._http_latencies)[len(self._http_latencies) // 2] if self._http_latencies else 45
-        http_p95 = sorted(self._http_latencies)[int(len(self._http_latencies) * 0.95)] if self._http_latencies else 120
+        http_p50 = sorted(self._http_latencies)[len(self._http_latencies) // 2] if self._http_latencies else None
+        http_p95 = sorted(self._http_latencies)[int(len(self._http_latencies) * 0.95)] if self._http_latencies else None
 
-        ai_p50 = sorted(self._ai_latencies)[len(self._ai_latencies) // 2] if self._ai_latencies else 220
+        ai_p50 = sorted(self._ai_latencies)[len(self._ai_latencies) // 2] if self._ai_latencies else None
         total_ai = self._ai_success_count + self._ai_failure_count
         ai_failure_rate = (self._ai_failure_count / float(total_ai) * 100) if total_ai > 0 else 0.0
         http_error_rate = (self._http_error_count / float(self._http_total_count) * 100) if self._http_total_count > 0 else 0.0
@@ -62,11 +63,11 @@ class MetricsCollector:
             "ai_latency_p50_ms": ai_p50,
             "ai_failure_rate_pct": round(ai_failure_rate, 2),
             "ai_total_requests": total_ai,
-            "avg_export_duration_ms": int(sum(self._export_durations) / len(self._export_durations)) if self._export_durations else 450,
-            "avg_research_duration_ms": int(sum(self._research_durations) / len(self._research_durations)) if self._research_durations else 1800,
-            "queue_depth": 0,
-            "database_latency_ms": 4,
-            "system_uptime_seconds": 86400,
+            "avg_export_duration_ms": int(sum(self._export_durations) / len(self._export_durations)) if self._export_durations else None,
+            "avg_research_duration_ms": int(sum(self._research_durations) / len(self._research_durations)) if self._research_durations else None,
+            "queue_depth": None,
+            "database_latency_ms": None,
+            "system_uptime_seconds": int(time.monotonic() - self._started_at),
         }
 
 

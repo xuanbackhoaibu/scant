@@ -57,5 +57,6 @@ class AIResponse(BaseModel):
     model: str
     usage: AIUsage
     latency_ms: int = 0
+    is_demo: bool = False
     cached: bool = False
     failover_applied: bool = False

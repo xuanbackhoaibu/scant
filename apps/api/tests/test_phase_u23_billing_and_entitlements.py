@@ -62,7 +62,9 @@ def test_entitlement_gating():
 
 
 @pytest.mark.asyncio
-async def test_billing_api(client: AsyncClient):
+async def test_billing_api(client: AsyncClient, monkeypatch):
+    for name in ("PAYOS_CLIENT_ID", "PAYOS_API_KEY", "PAYOS_CHECKSUM_KEY"):
+        monkeypatch.delenv(name, raising=False)
     reg_res = await client.post("/api/v1/auth/register", json={
         "email": "billable@company.com",
         "password": "Password123!",
@@ -80,7 +82,7 @@ async def test_billing_api(client: AsyncClient):
     # 2. My Entitlements
     ent_res = await client.get("/api/v1/billing/my-entitlements", headers=headers)
     assert ent_res.status_code == 200
-    assert ent_res.json()["plan_tier"] == "free"
+    assert ent_res.json()["plan_tier"] == reg_res.json()["user"]["plan"]
 
     # 3. Create Checkout Session
     checkout_res = await client.post("/api/v1/billing/checkout", json={
@@ -88,5 +90,4 @@ async def test_billing_api(client: AsyncClient):
         "success_url": "http://localhost:3050/settings",
         "cancel_url": "http://localhost:3050/settings"
     }, headers=headers)
-    assert checkout_res.status_code == 200
-    assert "checkout_url" in checkout_res.json()
+    assert checkout_res.status_code == 503  # Unconfigured provider must never fabricate checkout.

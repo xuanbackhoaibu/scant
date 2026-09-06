@@ -30,6 +30,8 @@ export default function LoginPage() {
       if (urlError) {
         if (urlError === "google_not_configured") {
           setError(t("auth.googleNotConfigured"));
+        } else if (urlError === "invalid_state") {
+          setError(t("auth.googleInvalidState"));
         } else {
           setError(decodeURIComponent(urlError));
         }

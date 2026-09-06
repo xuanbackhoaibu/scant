@@ -16,10 +16,12 @@ class ModelRouter:
     Selects optimal models and failover targets based on task type, tier, and quality needs.
     """
 
-    # Rates per 1M tokens in USD: (prompt_rate, completion_rate)
+    # Standard text rates per 1M tokens in USD, checked 2026-09-06.
+    # https://ai.google.dev/gemini-api/docs/pricing
+    # Excludes cache discounts, tools, taxes and account-specific credits.
     TOKEN_PRICING: Dict[str, Tuple[float, float]] = {
-        "gemini-2.5-flash": (0.075, 0.30),
-        "gemini-2.5-pro": (1.25, 5.00),
+        "gemini-2.5-flash": (0.30, 2.50),
+        "gemini-2.5-pro": (1.25, 10.00),
         "gpt-4o-mini": (0.15, 0.60),
         "gpt-4o": (2.50, 10.00),
         "claude-3-5-sonnet": (3.00, 15.00),
@@ -108,6 +110,8 @@ class ModelRouter:
     @classmethod
     def calculate_cost(cls, model_name: str, prompt_tokens: int, completion_tokens: int) -> float:
         prompt_rate, completion_rate = cls.TOKEN_PRICING.get(model_name, cls.TOKEN_PRICING["default"])
+        if model_name == "gemini-2.5-pro" and prompt_tokens > 200_000:
+            prompt_rate, completion_rate = 2.50, 15.00
         cost = (prompt_tokens / 1_000_000.0 * prompt_rate) + (completion_tokens / 1_000_000.0 * completion_rate)
         return round(cost, 7)
 

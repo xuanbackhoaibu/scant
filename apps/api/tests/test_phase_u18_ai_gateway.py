@@ -11,6 +11,23 @@ from app.services.observability.metrics_collector import metrics_collector
 from app.schemas.ai import AnalyzeIntentRequest
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def isolated_gateway_database(monkeypatch,request):
+    from sqlalchemy.ext.asyncio import create_async_engine,async_sessionmaker
+    from app.core.database import Base
+    from app.models.admin_configuration import AdminConfiguration
+    engine=create_async_engine('sqlite+aiosqlite:///:memory:')
+    async with engine.begin() as conn:await conn.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr('app.core.database.AsyncSessionLocal',async_sessionmaker(engine,expire_on_commit=False))
+    if request.node.name in {'test_ai_gateway_execute_success','test_ai_gateway_passes_max_tokens_to_provider','test_ai_gateway_failover_mechanism','test_outline_service_via_gateway'}:
+        async def deterministic_provider(self,prompt,response_format=None,**kwargs):
+            return GeminiProvider()._mock_academic_fallback(prompt,response_format)
+        monkeypatch.setattr('app.services.ai.gemini_provider.GeminiProvider.generate',deterministic_provider)
+        monkeypatch.setattr('app.services.ai.openai_provider.OpenAIProvider.generate',deterministic_provider)
+    yield
+    await engine.dispose()
+
+
 def test_model_router_resolutions():
     # Classification / Intent -> Fast cheap model
     route_class = model_router.resolve_route(

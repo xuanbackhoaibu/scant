@@ -115,6 +115,7 @@
     "signingUp": "Đang tạo tài khoản...",
     "alreadyHaveAccount": "Đã có tài khoản?",
     "dontHaveAccount": "Chưa có tài khoản?",
+    "googleInvalidState": "Phiên đăng nhập Google không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại.",
     "googleNotConfigured": "Đăng nhập Google hiện chưa được cấu hình Client ID",
     "loginFailed": "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.",
     "registerFailed": "Đăng ký thất bại. Vui lòng kiểm tra lại thông tin.",

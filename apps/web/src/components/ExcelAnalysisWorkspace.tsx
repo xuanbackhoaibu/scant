@@ -1,5 +1,7 @@
 "use client";
 
+import { GoogleDataConnection } from "@/components/GoogleDataConnection";
+
 import { buildWorkbookScope } from "@/lib/workbookScope";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -938,6 +940,7 @@ export default function ExcelAnalysisWorkspace({
 
   return (
     <div className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-xs font-sans overflow-hidden">
+      {dataSourceUrl?.includes("docs.google.com/spreadsheets") && <div className="px-4"><GoogleDataConnection /></div>}
       {/* 1. Header Workspace (2 Tầng rõ ràng theo phong cách SaaS tối giản) */}
       <div className="border-b border-slate-200 bg-white px-4 py-3 shrink-0 space-y-2.5">
         {/* Tầng 1: Tên file & Workspace Badge */}

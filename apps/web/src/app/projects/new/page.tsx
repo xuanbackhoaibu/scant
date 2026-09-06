@@ -1,5 +1,7 @@
 "use client";
 
+import { GoogleDataConnection } from "@/components/GoogleDataConnection";
+
 import { useState, useEffect, Suspense, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -1676,6 +1678,7 @@ function UniversalProjectWizardContent() {
 
                         {dataSourceMode === "url" && (
                           <div className="space-y-2">
+                    <GoogleDataConnection />
                             <label className="text-xs font-bold text-slate-700">
                               {locale === "vi" ? "Link dữ liệu công khai" : "Public data link"}
                             </label>
@@ -2152,6 +2155,7 @@ function UniversalProjectWizardContent() {
                         {/* URL Mode Input */}
                         {dataSourceMode === "url" && (
                           <div className="space-y-2 pt-1">
+                    <GoogleDataConnection />
                             <label className="text-xs font-bold text-slate-700">
                               {locale === "vi" ? "Link Google Sheets công khai hoặc file CSV/XLSX URL" : "Public Google Sheets URL or CSV/XLSX Link"}
                             </label>

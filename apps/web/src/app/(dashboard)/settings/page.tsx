@@ -1,5 +1,7 @@
 "use client";
 
+import { GoogleDataConnection } from "@/components/GoogleDataConnection";
+
 import { useState, useEffect } from "react";
 import { Settings, Cpu, ShieldCheck, Key, Save, Check, User, Globe, Moon, Sun, Monitor, CreditCard, Sparkles, Zap, CheckCircle2 } from "lucide-react";
 import { useTranslation, Locale } from "@/i18n/I18nContext";
@@ -451,6 +453,8 @@ export default function SettingsPage() {
               </span>
             </div>
           </div>
+
+          <GoogleDataConnection />
 
           {/* Change Password */}
           <form onSubmit={handleChangePassword} className="space-y-3 max-w-md pt-2 border-t border-slate-100">

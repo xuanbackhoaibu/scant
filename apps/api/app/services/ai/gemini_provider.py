@@ -69,6 +69,7 @@ class GeminiProvider(AIProvider):
                 return {
                     "text": text,
                     "tokens_used": tokens_used,
+                    "usage": {"prompt_tokens": usage.get("promptTokenCount"), "completion_tokens": (usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0))},
                     "provider": "gemini",
                     "model": target_model,
                 }
@@ -100,6 +101,7 @@ class GeminiProvider(AIProvider):
         if "CHẾ ĐỘ COPILOT CHAT: ANSWER_ONLY" in prompt or "CHE DO COPILOT CHAT: ANSWER_ONLY" in prompt:
             return {
                 "text": self._mock_copilot_chat_fallback(prompt),
+                "is_demo": True,
                 "tokens_used": 180,
                 "provider": "gemini",
                 "model": "gemini-2.5-flash"
@@ -211,6 +213,7 @@ class GeminiProvider(AIProvider):
             }
             return {
                 "text": json.dumps(mock_data, ensure_ascii=False, indent=2),
+                "is_demo": True,
                 "tokens_used": 650,
                 "provider": "gemini",
                 "model": "gemini-2.5-flash"
@@ -218,7 +221,8 @@ class GeminiProvider(AIProvider):
 
         return {
             "text": self._mock_section_fallback(prompt),
-            "tokens_used": 1800,
+            "is_demo": True,
+                "tokens_used": 1800,
             "provider": "gemini",
             "model": "gemini-2.5-flash"
         }

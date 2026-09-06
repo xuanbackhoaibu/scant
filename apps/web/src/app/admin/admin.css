@@ -1,0 +1,16 @@
+.admin-console { color:hsl(var(--foreground)); background:hsl(var(--background)); min-height:100vh; font-size:14px }
+.admin-console button,.admin-console input,.admin-console select,.admin-console textarea { border:1px solid hsl(var(--border));border-radius:6px;padding:7px 10px;background:hsl(var(--card));color:inherit; }
+.admin-console button { cursor:pointer; }
+.admin-console button:hover,.admin-console a:hover { background:hsl(var(--muted)); }
+.admin-console :is(button,input,select,textarea,a):focus-visible { outline:2px solid hsl(var(--ring));outline-offset:2px; }
+.admin-console button:disabled { opacity:.45;cursor:not-allowed; }
+.admin-console th { text-align:left;font-size:12px;color:hsl(var(--muted-foreground));font-weight:500;white-space:nowrap; }
+.admin-console th,.admin-console td { border-bottom:1px solid hsl(var(--border));padding:12px;vertical-align:top; }
+.admin-console td { max-width:360px;min-width:110px;overflow-wrap:break-word; }
+.admin-console tbody tr:hover { background:hsl(var(--muted)/.5); }
+.admin-console dialog { color:inherit;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:8px;padding:24px;max-width:480px;width:calc(100% - 32px);margin:auto; }
+.admin-console dialog::backdrop { background:rgb(0 0 0/.5); }
+.admin-panel { border:1px solid hsl(var(--border));border-radius:8px;background:hsl(var(--card));overflow:hidden; }
+.admin-muted { color:hsl(var(--muted-foreground)); }
+
+.admin-console table { min-width:100%;width:max-content; }

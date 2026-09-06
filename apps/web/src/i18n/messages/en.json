@@ -115,6 +115,7 @@
     "signingUp": "Creating Account...",
     "alreadyHaveAccount": "Already have an account?",
     "dontHaveAccount": "Don't have an account?",
+    "googleInvalidState": "Your Google sign-in session is invalid or expired. Please try signing in again.",
     "googleNotConfigured": "Google Sign-In is not yet configured with a Client ID",
     "loginFailed": "Sign in failed. Please check your credentials.",
     "registerFailed": "Sign up failed. Please check your information.",

@@ -1,6 +1,6 @@
 import secrets
-from datetime import timedelta
-from typing import List, Optional
+from datetime import timedelta, datetime, timezone
+from typing import List, Optional, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,8 @@ async def _process_google_user(
     token_data: Optional[Any] = None,
 ) -> TokenResponse:
     """Helper that creates, links, or returns existing user for Google auth and records OAuth tokens."""
+    if not user_info.email_verified:
+        raise HTTPException(403,"Google email must be verified")
     # 1. Search user by google_sub first
     stmt = select(User).where(User.google_sub == user_info.google_sub)
     res = await db.execute(stmt)
@@ -37,6 +39,8 @@ async def _process_google_user(
         # 2. Search user by email for safe account linking
         user = await user_repo.get_by_email(db, user_info.email)
         if user:
+            if not user.is_active:
+                raise HTTPException(403,"User account is inactive")
             # Safe link existing account
             user.google_sub = user_info.google_sub
             if user_info.picture and not user.avatar_url:
@@ -44,6 +48,10 @@ async def _process_google_user(
             await db.commit()
             await db.refresh(user)
         else:
+            from app.services.admin.configuration_service import read_configuration
+            registration=(await read_configuration(db,"system"))["values"]
+            if not registration["registration_enabled"]:
+                raise HTTPException(403,"Đăng ký tài khoản mới đang tạm dừng.")
             # Create new user via Google
             user = await user_repo.create(db, obj_in={
                 "email": user_info.email,
@@ -51,7 +59,7 @@ async def _process_google_user(
                 "google_sub": user_info.google_sub,
                 "avatar_url": user_info.picture,
                 "password_hash": f"oauth_google_{secrets.token_hex(24)}",
-                "plan": "pro",
+                "plan": registration["registration_plan"],
                 "is_active": True,
                 "preferred_locale": "vi",
                 "theme": "system",
@@ -66,6 +74,14 @@ async def _process_google_user(
                 "settings_json": {},
                 "brand_kit_json": {},
             })
+
+    if not user.is_active:
+        raise HTTPException(403, "User account is inactive")
+
+    # Basic sign-in must never replace an existing Sheets-capable credential
+    # with a narrower identity-only token. Dedicated consent uses google_data.
+    if token_data and 'https://www.googleapis.com/auth/spreadsheets' not in (getattr(token_data,'scope',None) or '').split():
+        token_data=None
 
     # Record or update Google auth account entry with tokens
     stmt_acc = select(AuthAccount).where(
@@ -101,6 +117,9 @@ async def _process_google_user(
             if getattr(token_data, "scope", None):
                 existing_acc.scopes = token_data.scope
             await db.commit()
+
+    from app.services.usage.quota_engine import quota_engine
+    await quota_engine.get_or_create_user_quota(db, user.id)
 
     access_token = create_access_token(
         subject=user.id,
@@ -143,12 +162,17 @@ async def register(user_in: UserRegister, db: AsyncSession = Depends(get_db)):
             detail="Email is already registered"
         )
     
+    from app.services.admin.configuration_service import read_configuration
+    registration=(await read_configuration(db,"system"))["values"]
+    if not registration["registration_enabled"]:
+        raise HTTPException(403,"Đăng ký tài khoản mới đang tạm dừng.")
+
     # Create user
     user = await user_repo.create(db, obj_in={
         "email": user_in.email,
         "name": user_in.name,
         "password_hash": get_password_hash(user_in.password),
-        "plan": "pro",
+        "plan": registration["registration_plan"],
         "is_active": True,
         "preferred_locale": "vi",
         "theme": "system",
@@ -171,6 +195,9 @@ async def register(user_in: UserRegister, db: AsyncSession = Depends(get_db)):
         "settings_json": {},
         "brand_kit_json": {},
     })
+
+    from app.services.usage.quota_engine import quota_engine
+    await quota_engine.get_or_create_user_quota(db, user.id)
 
     access_token = create_access_token(
         subject=user.id,
@@ -199,6 +226,9 @@ async def login(user_in: UserLogin, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User account is inactive"
         )
+
+    from app.services.usage.quota_engine import quota_engine
+    await quota_engine.get_or_create_user_quota(db, user.id)
 
     access_token = create_access_token(
         subject=user.id,
@@ -276,3 +306,6 @@ async def list_linked_accounts(
         }
         for acc in accounts
     ]
+
+from app.api.v1.google_connection import router as google_connection_router
+router.include_router(google_connection_router)

@@ -3,12 +3,12 @@ import logging
 import math
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs, quote, urlparse
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import select, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -184,18 +184,20 @@ class GoogleSheetsService:
 
         stmt = select(AuthAccount).where(
             AuthAccount.user_id == user.id,
-            AuthAccount.provider == "google",
+            AuthAccount.provider.in_(["google_data", "google"]),
         )
+        stmt=stmt.order_by(case((AuthAccount.provider=='google_data',0),else_=1))
         res = await db.execute(stmt)
-        auth_acc: Optional[AuthAccount] = res.scalars().first()
+        accounts=res.scalars().all()
+        auth_acc=next((a for a in accounts if 'https://www.googleapis.com/auth/spreadsheets' in (a.scopes or '').split()),None)
 
         if not auth_acc:
-            return None, "GOOGLE_ACCOUNT_NOT_LINKED"
+            return None, "GOOGLE_SHEETS_PERMISSION_REQUIRED"
 
         now = datetime.now(timezone.utc)
         # If token is present and not expired (with 60s buffer)
         if auth_acc.access_token:
-            if not auth_acc.token_expiry or auth_acc.token_expiry > now:
+            if not auth_acc.token_expiry or auth_acc.token_expiry.replace(tzinfo=auth_acc.token_expiry.tzinfo or timezone.utc) > now + timedelta(seconds=60):
                 return auth_acc.access_token, None
 
         # Refresh token if available
@@ -219,13 +221,13 @@ class GoogleSheetsService:
                             new_access_token = data.get("access_token")
                             expires_in = int(data.get("expires_in", 3600))
                             auth_acc.access_token = new_access_token
-                            auth_acc.token_expiry = datetime.now(timezone.utc)
+                            auth_acc.token_expiry = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
                             await db.commit()
                             return new_access_token, None
                 except Exception as ex:
                     logger.error(f"[GOOGLE_SHEETS_ERROR] Token refresh error: {str(ex)}")
 
-        return auth_acc.access_token, None
+        return None, "GOOGLE_RECONNECT_REQUIRED"
 
     @classmethod
     async def resolve_sheet_metadata(

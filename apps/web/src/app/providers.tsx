@@ -33,6 +33,9 @@ export function Providers({ children }: { children: ReactNode }) {
   const checkAuth = useAuthStore((state) => state.checkAuth);
 
   useEffect(() => {
+    // The connection popup only delivers a result; closing it can abort fetches.
+    // Do not let its auth bootstrap clear the parent tab's shared session.
+    if (window.location.pathname === "/callback" && new URLSearchParams(window.location.search).has("google_connection")) return;
     checkAuth();
   }, [checkAuth]);
 

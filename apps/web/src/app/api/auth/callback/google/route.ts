@@ -8,21 +8,56 @@ export async function GET(request: NextRequest) {
   const error = searchParams.get("error");
   const state = searchParams.get("state");
 
+  const connecting = request.cookies.get("oauth_intent")?.value === "sheets";
   const loginUrl = new URL("/login", request.url);
+  const finish = (response: NextResponse) => {
+    response.cookies.delete("oauth_state");
+    response.cookies.delete("oauth_intent");
+    response.cookies.delete("oauth_connection_user");
+    response.cookies.delete("oauth_from");
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  };
+  const connectionResult = (message?: string) => {
+    const destination = new URL("/callback", request.url);
+    destination.searchParams.set("google_connection", message ? "error" : "success");
+    if (message) destination.searchParams.set("connection_error", message);
+    return finish(NextResponse.redirect(destination));
+  };
+  const expectedState = request.cookies.get("oauth_state")?.value;
+  if (!state || !expectedState || state !== expectedState) {
+    if (connecting) return connectionResult("Phiên kết nối đã hết hạn. Vui lòng thử lại.");
+    loginUrl.searchParams.set("error", "invalid_state");
+    return finish(NextResponse.redirect(loginUrl));
+  }
 
   if (error) {
+    if (connecting) return connectionResult("Bạn chưa cấp quyền Google Sheets. Phiên đăng nhập vẫn được giữ nguyên.");
     loginUrl.searchParams.set("error", error);
-    return NextResponse.redirect(loginUrl);
+    return finish(NextResponse.redirect(loginUrl));
   }
 
   if (!code) {
+    if (connecting) return connectionResult("Google chưa trả về mã cấp quyền. Vui lòng thử lại.");
     loginUrl.searchParams.set("error", "missing_code");
-    return NextResponse.redirect(loginUrl);
+    return finish(NextResponse.redirect(loginUrl));
   }
 
   const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3050/api/auth/callback/google";
 
   try {
+    if (connecting) {
+      const token = request.cookies.get("auth_token")?.value;
+      const owner = request.cookies.get("oauth_connection_user")?.value;
+      if (!token || !owner) return connectionResult("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+      const result = await fetch(`${API_BASE}/auth/google/connect`, {
+        method:"POST",headers:{"Content-Type":"application/json",Authorization:`Bearer ${token}`},
+        body:JSON.stringify({code,redirect_uri:redirectUri,expected_user_id:owner}),
+        signal:AbortSignal.timeout(25000),
+      });
+      if (!result.ok) return connectionResult("Không kết nối được Google Sheets. Kiểm tra tài khoản và quyền đã cấp rồi thử lại.");
+      return connectionResult();
+    }
     // Forward code to FastAPI backend for secure verification, user upsert, and token generation
     const response = await fetch(`${API_BASE}/auth/google/code`, {
       method: "POST",
@@ -39,7 +74,7 @@ export async function GET(request: NextRequest) {
       const errData = await response.json().catch(() => ({}));
       const detail = errData.detail || "Google authentication failed";
       loginUrl.searchParams.set("error", encodeURIComponent(detail));
-      return NextResponse.redirect(loginUrl);
+      return finish(NextResponse.redirect(loginUrl));
     }
 
     const authData = await response.json();
@@ -55,7 +90,7 @@ export async function GET(request: NextRequest) {
       );
     }
     const from = request.cookies.get("oauth_from")?.value;
-    if (from && from.startsWith("/")) {
+    if (from && from.startsWith("/") && !from.startsWith("//") && !from.includes("\\")) {
       callbackUrl.searchParams.set("from", from);
     }
 
@@ -70,9 +105,10 @@ export async function GET(request: NextRequest) {
     });
     res.cookies.delete("oauth_from");
 
-    return res;
-  } catch (err: any) {
-    loginUrl.searchParams.set("error", encodeURIComponent(err.message || "Network error during Google auth"));
-    return NextResponse.redirect(loginUrl);
+    return finish(res);
+  } catch (err: unknown) {
+    if (connecting) return connectionResult("Kết nối Google tạm thời thất bại. Vui lòng thử lại.");
+    loginUrl.searchParams.set("error", encodeURIComponent(err instanceof Error ? err.message : "Network error during Google auth"));
+    return finish(NextResponse.redirect(loginUrl));
   }
 }
